@@ -6,46 +6,84 @@ import BlogModal from './components/BlogModal';
 import CreateBlogModal from './components/CreateBlogModal';
 import AuthModal from './components/AuthModal';
 import AdminDashboardModal from './components/AdminDashboardModal';
-import { Search, Sparkles, BookOpen, PenTool, RefreshCw, ShieldCheck } from 'lucide-react';
+import { Search, Sparkles, PenTool, RefreshCw, Database, Tag, Layers } from 'lucide-react';
 
 function BlogApp() {
-  const { isAuthenticated, user, isAdmin } = useAuth();
+  const { isAuthenticated, user, token, isAdmin } = useAuth();
   const [blogs, setBlogs] = useState([]);
+  const [popularTags, setPopularTags] = useState([]);
+  const [selectedTag, setSelectedTag] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedBlog, setSelectedBlog] = useState(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [editingBlog, setEditingBlog] = useState(null);
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
   const [authModal, setAuthModal] = useState({ isOpen: false, mode: 'login', notice: '' });
 
-  // Fetch approved blogs from API
-  const fetchBlogs = async () => {
+  // Fetch blogs & tags from PostgreSQL API
+  const fetchBlogs = async (tag = selectedTag) => {
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch('http://localhost:5000/api/blogs');
+      const url = tag ? `http://localhost:5000/api/blogs?tag=${encodeURIComponent(tag)}` : 'http://localhost:5000/api/blogs';
+      const [res, tagsRes] = await Promise.all([
+        fetch(url),
+        fetch('http://localhost:5000/api/blogs/tags/all')
+      ]);
+
       const data = await res.json();
+      const tagsData = await tagsRes.json();
+
       if (data.success) {
         setBlogs(data.data);
       } else {
         throw new Error(data.message || 'Failed to load blogs');
       }
+
+      if (tagsData.success) {
+        setPopularTags(tagsData.data);
+      }
     } catch (err) {
       console.error('Fetch blogs error:', err);
-      setError(err.message || 'Could not connect to backend server');
+      setError(err.message || 'Could not connect to PostgreSQL backend');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchBlogs();
-  }, []);
+    fetchBlogs(selectedTag);
+  }, [selectedTag]);
 
   const handleBlogCreated = (newBlog) => {
     if (newBlog && newBlog.status === 'approved') {
       setBlogs((prev) => [newBlog, ...prev]);
+    }
+  };
+
+  const handleBlogUpdated = (updatedBlog) => {
+    setBlogs((prev) =>
+      prev.map((b) => ((b.id || b._id) === (updatedBlog.id || updatedBlog._id) ? updatedBlog : b))
+    );
+  };
+
+  const handleDeleteBlog = async (blogId) => {
+    if (!window.confirm('Are you sure you want to delete this story?')) return;
+
+    try {
+      const res = await fetch(`http://localhost:5000/api/blogs/${blogId}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to delete blog');
+      setBlogs((prev) => prev.filter((b) => (b.id || b._id) !== blogId));
+    } catch (err) {
+      alert(err.message || 'Error deleting story');
     }
   };
 
@@ -57,20 +95,25 @@ function BlogApp() {
     setAuthModal({ isOpen: true, mode: 'login', notice });
   };
 
-  // Filter blogs by search term
+  // Filter blogs by search query
   const filteredBlogs = blogs.filter((blog) => {
     const q = searchQuery.toLowerCase();
+    const hasTagMatch = Array.isArray(blog.tags) && blog.tags.some((t) => t.toLowerCase().includes(q));
     return (
       blog.title.toLowerCase().includes(q) ||
       (blog.content && blog.content.toLowerCase().includes(q)) ||
-      (blog.author && blog.author.toLowerCase().includes(q))
+      (blog.author && blog.author.toLowerCase().includes(q)) ||
+      hasTagMatch
     );
   });
 
   return (
     <>
       <Navbar 
-        onOpenCreate={() => setIsCreateOpen(true)} 
+        onOpenCreate={() => {
+          setEditingBlog(null);
+          setIsCreateOpen(true);
+        }} 
         onOpenAuth={handleOpenAuth}
         onRequireAuth={handleRequireAuth}
         onOpenAdminDashboard={() => setIsAdminDashboardOpen(true)}
@@ -79,21 +122,21 @@ function BlogApp() {
       <main className="container" style={{ flex: 1 }}>
         {/* Hero Header */}
         <section className="hero">
-          <div className="hero-tag">
-            <ShieldCheck size={14} />
-            <span>Version 4.0 Milestone: Admin Approval Workflow & Dashboard</span>
+          <div className="hero-tag" style={{ background: 'rgba(56, 189, 248, 0.1)', borderColor: 'rgba(56, 189, 248, 0.3)', color: '#38bdf8' }}>
+            <Database size={14} />
+            <span>Version 5.0 (Final): PostgreSQL Engine + Tags + Threaded Nested Comments</span>
           </div>
           <h1 className="hero-title">
             Words that Inspire, Code that Ships.
           </h1>
           <p className="hero-desc">
-            Community-driven publishing with strict editorial oversight. User stories are submitted for <strong>Admin Review</strong> and published only once approved.
+            Full-stack publication platform built on <strong>Express</strong>, <strong>PostgreSQL</strong>, and <strong>React</strong>. Features relational tagging, two-tier threaded reply discussions, and editorial review approval.
           </p>
 
           {/* Search bar */}
           <div style={{
             maxWidth: '560px',
-            margin: '0 auto',
+            margin: '0 auto 20px',
             position: 'relative',
             display: 'flex',
             alignItems: 'center'
@@ -111,7 +154,7 @@ function BlogApp() {
               id="search-blogs-input"
               type="text" 
               className="form-input" 
-              placeholder="Search approved stories by title, content or author..."
+              placeholder="Search stories by title, content, author, or tag..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               style={{
@@ -139,6 +182,66 @@ function BlogApp() {
               </button>
             )}
           </div>
+
+          {/* Interactive Tags Filter Bar */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexWrap: 'wrap',
+            gap: '8px',
+            maxWidth: '750px',
+            margin: '0 auto'
+          }}>
+            <span style={{ fontSize: '0.82rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Tag size={13} />
+              Filter by Tag:
+            </span>
+
+            <button
+              type="button"
+              id="filter-tag-all"
+              onClick={() => setSelectedTag('')}
+              style={{
+                background: selectedTag === '' ? 'var(--primary-gradient)' : 'rgba(255, 255, 255, 0.05)',
+                color: selectedTag === '' ? 'white' : 'var(--text-muted)',
+                border: `1px solid ${selectedTag === '' ? 'transparent' : 'var(--border-color)'}`,
+                borderRadius: 'var(--radius-full)',
+                padding: '4px 12px',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'var(--transition-fast)'
+              }}
+            >
+              All Topics
+            </button>
+
+            {popularTags.map((t) => {
+              const active = selectedTag.toLowerCase() === t.name.toLowerCase();
+              return (
+                <button
+                  key={t.id}
+                  id={`filter-tag-${t.name}`}
+                  type="button"
+                  onClick={() => setSelectedTag(active ? '' : t.name)}
+                  style={{
+                    background: active ? 'var(--primary-gradient)' : 'rgba(99, 102, 241, 0.1)',
+                    color: active ? 'white' : '#a5b4fc',
+                    border: `1px solid ${active ? 'transparent' : 'rgba(99, 102, 241, 0.25)'}`,
+                    borderRadius: 'var(--radius-full)',
+                    padding: '4px 12px',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    transition: 'var(--transition-fast)'
+                  }}
+                >
+                  #{t.name} ({t.count})
+                </button>
+              );
+            })}
+          </div>
         </section>
 
         {/* Section Heading & Refresh */}
@@ -151,7 +254,9 @@ function BlogApp() {
           borderBottom: '1px solid var(--border-color)'
         }}>
           <div>
-            <h2 style={{ fontSize: '1.4rem' }}>Approved Public Stories</h2>
+            <h2 style={{ fontSize: '1.4rem' }}>
+              {selectedTag ? `Stories tagged #${selectedTag}` : 'Public Stories (PostgreSQL)'}
+            </h2>
             <p style={{ fontSize: '0.86rem', color: 'var(--text-dim)' }}>
               Showing {filteredBlogs.length} approved {filteredBlogs.length === 1 ? 'story' : 'stories'}
             </p>
@@ -159,7 +264,7 @@ function BlogApp() {
 
           <button 
             className="btn btn-secondary btn-sm"
-            onClick={fetchBlogs}
+            onClick={() => fetchBlogs(selectedTag)}
             disabled={loading}
           >
             <RefreshCw size={14} className={loading ? 'spin' : ''} />
@@ -173,19 +278,19 @@ function BlogApp() {
             <div style={{
               width: '40px',
               height: '40px',
-              border: '3px solid rgba(99, 102, 241, 0.2)',
-              borderTopColor: 'var(--primary)',
+              border: '3px solid rgba(56, 189, 248, 0.2)',
+              borderTopColor: '#38bdf8',
               borderRadius: '50%',
               margin: '0 auto 16px',
               animation: 'spin 0.8s linear infinite'
             }} />
-            <p>Fetching approved stories...</p>
+            <p>Fetching stories from PostgreSQL...</p>
           </div>
         ) : error ? (
           <div className="card" style={{ textAlign: 'center', margin: '40px auto', maxWidth: '500px', borderColor: 'rgba(244, 63, 94, 0.3)' }}>
             <h3 style={{ color: 'var(--accent-rose)', marginBottom: '8px' }}>Unable to reach backend</h3>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '20px' }}>{error}</p>
-            <button className="btn btn-primary btn-sm" onClick={fetchBlogs}>
+            <button className="btn btn-primary btn-sm" onClick={() => fetchBlogs(selectedTag)}>
               Try Again
             </button>
           </div>
@@ -205,19 +310,24 @@ function BlogApp() {
               <PenTool size={26} />
             </div>
             <h3 style={{ fontSize: '1.25rem', marginBottom: '8px' }}>
-              {searchQuery ? 'No stories match your query' : 'No approved blogs yet'}
+              {selectedTag ? `No stories found with tag #${selectedTag}` : searchQuery ? 'No stories match your search' : 'No approved blogs yet'}
             </h3>
             <p style={{ color: 'var(--text-muted)', maxWidth: '450px', margin: '0 auto 24px', fontSize: '0.92rem' }}>
-              {searchQuery
-                ? `Try adjusting your search for "${searchQuery}" or clear the search input.`
+              {selectedTag 
+                ? 'Try picking a different tag filter or click "All Topics".'
                 : 'Write a story and submit it for review to get published on the homepage!'}
             </p>
-            {!searchQuery && (
+            {selectedTag ? (
+              <button className="btn btn-secondary btn-sm" onClick={() => setSelectedTag('')}>
+                Clear Tag Filter
+              </button>
+            ) : (
               <button 
                 id="empty-state-write-btn"
                 className="btn btn-primary"
                 onClick={() => {
                   if (isAuthenticated) {
+                    setEditingBlog(null);
                     setIsCreateOpen(true);
                   } else {
                     handleRequireAuth('You must sign in or register before you can write a story.');
@@ -233,9 +343,15 @@ function BlogApp() {
           <div className="blog-grid">
             {filteredBlogs.map((blog) => (
               <BlogCard 
-                key={blog._id} 
+                key={blog.id || blog._id} 
                 blog={blog} 
                 onReadMore={(b) => setSelectedBlog(b)}
+                onSelectTag={(t) => setSelectedTag(t)}
+                onEditBlog={(b) => {
+                  setEditingBlog(b);
+                  setIsCreateOpen(true);
+                }}
+                onDeleteBlog={handleDeleteBlog}
               />
             ))}
           </div>
@@ -245,7 +361,7 @@ function BlogApp() {
       {/* Footer */}
       <footer className="footer">
         <div className="container">
-          <p>© 2026 Blogksolve. Version 4.0 (Admin Approval & User Directory Dashboard).</p>
+          <p>© 2026 Blogksolve. Version 5.0 (Express + PostgreSQL + React + Tags + Threaded Replies).</p>
         </div>
       </footer>
 
@@ -260,8 +376,13 @@ function BlogApp() {
 
       {isCreateOpen && (
         <CreateBlogModal 
-          onClose={() => setIsCreateOpen(false)} 
+          initialBlog={editingBlog}
+          onClose={() => {
+            setIsCreateOpen(false);
+            setEditingBlog(null);
+          }} 
           onBlogCreated={handleBlogCreated}
+          onBlogUpdated={handleBlogUpdated}
         />
       )}
 
@@ -269,7 +390,7 @@ function BlogApp() {
         <AdminDashboardModal
           isOpen={isAdminDashboardOpen}
           onClose={() => setIsAdminDashboardOpen(false)}
-          onBlogApproved={fetchBlogs}
+          onBlogApproved={() => fetchBlogs(selectedTag)}
         />
       )}
 

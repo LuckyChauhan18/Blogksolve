@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Check, Trash2, Clock, Users, FileText, CheckCircle2, XCircle, AlertTriangle, RefreshCw } from 'lucide-react';
+import { X, Check, Trash2, Clock, Users, FileText, CheckCircle2, XCircle, AlertTriangle, RefreshCw, Tag } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export default function AdminDashboardModal({ isOpen, onClose, onBlogApproved }) {
@@ -87,7 +87,7 @@ export default function AdminDashboardModal({ isOpen, onClose, onBlogApproved })
               <h2 style={{ fontSize: '1.45rem' }}>Admin Control & Review Dashboard</h2>
             </div>
             <p style={{ fontSize: '0.86rem', color: 'var(--text-dim)', marginTop: '4px' }}>
-              Review story submissions, accept/decline publication requests, and inspect user directory.
+              PostgreSQL Review Engine: approve or decline submissions and inspect user directory.
             </p>
           </div>
 
@@ -209,65 +209,80 @@ export default function AdminDashboardModal({ isOpen, onClose, onBlogApproved })
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                {blogsData.pendingBlogs.map((b) => (
-                  <div 
-                    key={b._id}
-                    style={{
-                      background: 'rgba(15, 23, 42, 0.65)',
-                      border: '1px solid rgba(236, 72, 153, 0.3)',
-                      borderRadius: 'var(--radius-md)',
-                      padding: '20px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '12px'
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                          <span className="badge" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', fontSize: '0.72rem' }}>
-                            ⏳ PENDING APPROVAL
-                          </span>
-                          <span style={{ fontSize: '0.82rem', color: 'var(--text-dim)' }}>
-                            Submitted by <strong>{b.author}</strong> ({b.user?.email || 'N/A'})
-                          </span>
+                {blogsData.pendingBlogs.map((b) => {
+                  const blogId = b.id || b._id;
+                  const authorEmail = b.authorEmail || b.user?.email || 'N/A';
+                  const tags = Array.isArray(b.tags) ? b.tags : [];
+
+                  return (
+                    <div 
+                      key={blogId}
+                      style={{
+                        background: 'rgba(15, 23, 42, 0.65)',
+                        border: '1px solid rgba(236, 72, 153, 0.3)',
+                        borderRadius: 'var(--radius-md)',
+                        padding: '20px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '12px'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                            <span className="badge" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', fontSize: '0.72rem' }}>
+                              ⏳ PENDING APPROVAL
+                            </span>
+                            <span style={{ fontSize: '0.82rem', color: 'var(--text-dim)' }}>
+                              Submitted by <strong>{b.author}</strong> ({authorEmail})
+                            </span>
+                          </div>
+                          <h3 style={{ fontSize: '1.25rem', color: 'var(--text-main)', marginBottom: '6px' }}>{b.title}</h3>
+                          {tags.length > 0 && (
+                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                              {tags.map((t, idx) => (
+                                <span key={idx} className="badge badge-primary" style={{ fontSize: '0.7rem', padding: '2px 8px' }}>
+                                  #{t}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                        <h3 style={{ fontSize: '1.25rem', color: 'var(--text-main)' }}>{b.title}</h3>
+
+                        {/* Accept & Decline Buttons */}
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                          <button
+                            id={`accept-btn-${blogId}`}
+                            className="btn btn-sm"
+                            style={{
+                              background: 'rgba(16, 185, 129, 0.2)',
+                              color: 'var(--accent-emerald)',
+                              border: '1px solid rgba(16, 185, 129, 0.4)'
+                            }}
+                            onClick={() => handleDecision(blogId, 'approved')}
+                            disabled={actionLoadingId === blogId}
+                          >
+                            <Check size={14} />
+                            <span>Accept (Approve)</span>
+                          </button>
+                          <button
+                            id={`decline-btn-${blogId}`}
+                            className="btn btn-danger btn-sm"
+                            onClick={() => handleDecision(blogId, 'declined')}
+                            disabled={actionLoadingId === blogId}
+                          >
+                            <X size={14} />
+                            <span>Decline</span>
+                          </button>
+                        </div>
                       </div>
 
-                      {/* Accept & Decline Buttons */}
-                      <div style={{ display: 'flex', gap: '10px' }}>
-                        <button
-                          id={`accept-btn-${b._id}`}
-                          className="btn btn-sm"
-                          style={{
-                            background: 'rgba(16, 185, 129, 0.2)',
-                            color: 'var(--accent-emerald)',
-                            border: '1px solid rgba(16, 185, 129, 0.4)'
-                          }}
-                          onClick={() => handleDecision(b._id, 'approved')}
-                          disabled={actionLoadingId === b._id}
-                        >
-                          <Check size={14} />
-                          <span>Accept (Approve)</span>
-                        </button>
-                        <button
-                          id={`decline-btn-${b._id}`}
-                          className="btn btn-danger btn-sm"
-                          onClick={() => handleDecision(b._id, 'declined')}
-                          disabled={actionLoadingId === b._id}
-                        >
-                          <X size={14} />
-                          <span>Decline</span>
-                        </button>
-                      </div>
+                      <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', lineHeight: '1.6' }}>
+                        {b.content}
+                      </p>
                     </div>
-
-                    <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', lineHeight: '1.6' }}>
-                      {b.content}
-                    </p>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -282,56 +297,68 @@ export default function AdminDashboardModal({ isOpen, onClose, onBlogApproved })
               </p>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {blogsData.fulfilledBlogs.map((b) => (
-                  <div
-                    key={b._id}
-                    style={{
-                      background: 'rgba(15, 23, 42, 0.5)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: 'var(--radius-md)',
-                      padding: '16px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between'
-                    }}
-                  >
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                        <span className="badge" style={{
-                          background: b.status === 'approved' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(244, 63, 94, 0.15)',
-                          color: b.status === 'approved' ? 'var(--accent-emerald)' : 'var(--accent-rose)',
-                          fontSize: '0.72rem'
-                        }}>
-                          {b.status === 'approved' ? '✓ APPROVED (PUBLIC)' : '✗ DECLINED'}
-                        </span>
-                        <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>
-                          Author: {b.author}
-                        </span>
-                      </div>
-                      <h4 style={{ fontSize: '1.05rem', color: 'var(--text-main)' }}>{b.title}</h4>
-                    </div>
+                {blogsData.fulfilledBlogs.map((b) => {
+                  const blogId = b.id || b._id;
+                  const tags = Array.isArray(b.tags) ? b.tags : [];
 
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      {b.status === 'declined' ? (
-                        <button
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => handleDecision(b._id, 'approved')}
-                          disabled={actionLoadingId === b._id}
-                        >
-                          Re-approve
-                        </button>
-                      ) : (
-                        <button
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => handleDecision(b._id, 'declined')}
-                          disabled={actionLoadingId === b._id}
-                        >
-                          Revoke to Declined
-                        </button>
-                      )}
+                  return (
+                    <div
+                      key={blogId}
+                      style={{
+                        background: 'rgba(15, 23, 42, 0.5)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: 'var(--radius-md)',
+                        padding: '16px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between'
+                      }}
+                    >
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                          <span className="badge" style={{
+                            background: b.status === 'approved' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(244, 63, 94, 0.15)',
+                            color: b.status === 'approved' ? 'var(--accent-emerald)' : 'var(--accent-rose)',
+                            fontSize: '0.72rem'
+                          }}>
+                            {b.status === 'approved' ? '✓ APPROVED (PUBLIC)' : '✗ DECLINED'}
+                          </span>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>
+                            Author: {b.author}
+                          </span>
+                        </div>
+                        <h4 style={{ fontSize: '1.05rem', color: 'var(--text-main)', marginBottom: '4px' }}>{b.title}</h4>
+                        {tags.length > 0 && (
+                          <div style={{ display: 'flex', gap: '4px' }}>
+                            {tags.map((t, idx) => (
+                              <span key={idx} style={{ fontSize: '0.72rem', color: '#a5b4fc' }}>#{t}</span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        {b.status === 'declined' ? (
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => handleDecision(blogId, 'approved')}
+                            disabled={actionLoadingId === blogId}
+                          >
+                            Re-approve
+                          </button>
+                        ) : (
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => handleDecision(blogId, 'declined')}
+                            disabled={actionLoadingId === blogId}
+                          >
+                            Revoke to Declined
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -387,69 +414,72 @@ export default function AdminDashboardModal({ isOpen, onClose, onBlogApproved })
               </div>
             </div>
 
-            {/* User List Table */}
+            {/* User List */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {usersData.allUsers.map((u) => (
-                <div
-                  key={u._id}
-                  style={{
-                    background: 'rgba(15, 23, 42, 0.5)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: 'var(--radius-md)',
-                    padding: '14px 18px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between'
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{
-                      width: '34px',
-                      height: '34px',
-                      borderRadius: '50%',
-                      background: u.role === 'admin' ? 'linear-gradient(135deg, #ec4899, #f43f5e)' : 'var(--primary-gradient)',
+              {usersData.allUsers.map((u) => {
+                const userId = u.id || u._id;
+                return (
+                  <div
+                    key={userId}
+                    style={{
+                      background: 'rgba(15, 23, 42, 0.5)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 'var(--radius-md)',
+                      padding: '14px 18px',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center',
-                      color: 'white',
-                      fontWeight: 700,
-                      fontSize: '0.85rem'
-                    }}>
-                      {(u.name || 'U')[0].toUpperCase()}
-                    </div>
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>{u.name}</span>
-                        <span className="badge" style={{
-                          background: u.role === 'admin' ? 'rgba(236, 72, 153, 0.15)' : 'rgba(99, 102, 241, 0.15)',
-                          color: u.role === 'admin' ? '#f472b6' : '#a5b4fc',
-                          fontSize: '0.65rem'
-                        }}>
-                          {u.role.toUpperCase()}
-                        </span>
+                      justifyContent: 'space-between'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{
+                        width: '34px',
+                        height: '34px',
+                        borderRadius: '50%',
+                        background: u.role === 'admin' ? 'linear-gradient(135deg, #ec4899, #f43f5e)' : 'var(--primary-gradient)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'white',
+                        fontWeight: 700,
+                        fontSize: '0.85rem'
+                      }}>
+                        {(u.name || 'U')[0].toUpperCase()}
                       </div>
-                      <span style={{ fontSize: '0.82rem', color: 'var(--text-dim)' }}>{u.email}</span>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>{u.name}</span>
+                          <span className="badge" style={{
+                            background: u.role === 'admin' ? 'rgba(236, 72, 153, 0.15)' : 'rgba(99, 102, 241, 0.15)',
+                            color: u.role === 'admin' ? '#f472b6' : '#a5b4fc',
+                            fontSize: '0.65rem'
+                          }}>
+                            {u.role.toUpperCase()}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '0.82rem', color: 'var(--text-dim)' }}>{u.email}</span>
+                      </div>
+                    </div>
+
+                    {/* User status tags & counts */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      {u.pendingCount > 0 ? (
+                        <span className="badge" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', fontSize: '0.75rem' }}>
+                          ⚡ {u.pendingCount} Pending Request(s)
+                        </span>
+                      ) : u.hasFulfilledRequest ? (
+                        <span className="badge" style={{ background: 'rgba(16, 185, 129, 0.15)', color: 'var(--accent-emerald)', fontSize: '0.75rem' }}>
+                          ✓ Fulfilled ({u.approvedCount} approved, {u.declinedCount} declined)
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>
+                          No submissions yet
+                        </span>
+                      )}
                     </div>
                   </div>
-
-                  {/* User status tags & counts */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    {u.pendingCount > 0 ? (
-                      <span className="badge" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', fontSize: '0.75rem' }}>
-                        ⚡ {u.pendingCount} Pending Request(s)
-                      </span>
-                    ) : u.hasFulfilledRequest ? (
-                      <span className="badge" style={{ background: 'rgba(16, 185, 129, 0.15)', color: 'var(--accent-emerald)', fontSize: '0.75rem' }}>
-                        ✓ Fulfilled ({u.approvedCount} approved, {u.declinedCount} declined)
-                      </span>
-                    ) : (
-                      <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>
-                        No submissions yet
-                      </span>
-                    )}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

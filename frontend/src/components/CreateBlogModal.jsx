@@ -1,14 +1,19 @@
-import React, { useState } from 'react';
-import { X, Send, Sparkles, AlertCircle, User, Clock, CheckCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Send, Sparkles, AlertCircle, User, Clock, Tag } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-export default function CreateBlogModal({ onClose, onBlogCreated }) {
+export default function CreateBlogModal({ onClose, onBlogCreated, initialBlog = null, onBlogUpdated }) {
   const { user, token, isAdmin } = useAuth();
-  const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
+  const [title, setTitle] = useState(initialBlog?.title || '');
+  const [content, setContent] = useState(initialBlog?.content || '');
+  const [tagsInput, setTagsInput] = useState(
+    Array.isArray(initialBlog?.tags) ? initialBlog.tags.join(', ') : ''
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [submittedNotice, setSubmittedNotice] = useState(null);
+
+  const isEditing = !!initialBlog;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -21,8 +26,19 @@ export default function CreateBlogModal({ onClose, onBlogCreated }) {
       setLoading(true);
       setError('');
 
-      const response = await fetch('http://localhost:5000/api/blogs', {
-        method: 'POST',
+      const cleanTags = tagsInput
+        .split(',')
+        .map((t) => t.trim().replace(/^#/, ''))
+        .filter(Boolean);
+
+      const url = isEditing 
+        ? `http://localhost:5000/api/blogs/${initialBlog.id || initialBlog._id}` 
+        : 'http://localhost:5000/api/blogs';
+
+      const method = isEditing ? 'PUT' : 'POST';
+
+      const response = await fetch(url, {
+        method,
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
@@ -30,6 +46,7 @@ export default function CreateBlogModal({ onClose, onBlogCreated }) {
         body: JSON.stringify({
           title: title.trim(),
           content: content.trim(),
+          tags: cleanTags,
           author: user?.name || 'Anonymous'
         })
       });
@@ -37,20 +54,25 @@ export default function CreateBlogModal({ onClose, onBlogCreated }) {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || 'Failed to publish blog post');
+        throw new Error(data.message || 'Failed to save blog post');
       }
 
-      if (data.status === 'pending') {
-        setSubmittedNotice({
-          status: 'pending',
-          message: data.message
-        });
-      } else {
-        onBlogCreated(data.data);
+      if (isEditing) {
+        if (onBlogUpdated) onBlogUpdated(data.data);
         onClose();
+      } else {
+        if (data.status === 'pending') {
+          setSubmittedNotice({
+            status: 'pending',
+            message: data.message
+          });
+        } else {
+          onBlogCreated(data.data);
+          onClose();
+        }
       }
     } catch (err) {
-      setError(err.message || 'Error creating blog');
+      setError(err.message || 'Error saving blog');
     } finally {
       setLoading(false);
     }
@@ -74,9 +96,11 @@ export default function CreateBlogModal({ onClose, onBlogCreated }) {
               <Sparkles size={18} />
             </div>
             <div>
-              <h3 style={{ fontSize: '1.25rem' }}>Write New Story</h3>
+              <h3 style={{ fontSize: '1.25rem' }}>
+                {isEditing ? 'Edit Story' : 'Write New Story'}
+              </h3>
               <p style={{ fontSize: '0.82rem', color: 'var(--text-dim)' }}>
-                Publishing as <strong style={{ color: 'var(--text-main)' }}>{user?.name || 'User'}</strong> ({user?.role?.toUpperCase() || 'MEMBER'})
+                {isEditing ? 'Update your published content' : `Publishing as ${user?.name || 'User'} (${user?.role?.toUpperCase() || 'MEMBER'})`}
               </p>
             </div>
           </div>
@@ -105,7 +129,7 @@ export default function CreateBlogModal({ onClose, onBlogCreated }) {
               Submitted for Admin Approval!
             </h3>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', maxWidth: '480px', margin: '0 auto 24px', lineHeight: '1.6' }}>
-              Your story has been received by our editorial team. In Version 4, normal user stories are held in review and will appear publicly once an Administrator approves them from the Admin Dashboard.
+              Your story has been received into PostgreSQL. Normal member stories are held in review and will appear publicly once an Administrator approves them from the Admin Dashboard.
             </p>
             <button 
               id="close-pending-notice-btn"
@@ -118,7 +142,7 @@ export default function CreateBlogModal({ onClose, onBlogCreated }) {
           </div>
         ) : (
           <>
-            {!isAdmin && (
+            {!isAdmin && !isEditing && (
               <div style={{
                 background: 'rgba(245, 158, 11, 0.1)',
                 border: '1px solid rgba(245, 158, 11, 0.3)',
@@ -161,7 +185,7 @@ export default function CreateBlogModal({ onClose, onBlogCreated }) {
                   id="blog-title-input"
                   type="text" 
                   className="form-input" 
-                  placeholder="e.g. Scaling Authentication Systems with JWT & Express"
+                  placeholder="e.g. Relational Data Modeling with PostgreSQL and Express"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   required
@@ -169,20 +193,18 @@ export default function CreateBlogModal({ onClose, onBlogCreated }) {
               </div>
 
               <div className="form-group">
-                <label className="form-label">Author</label>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  background: 'rgba(15, 23, 42, 0.5)',
-                  border: '1px solid var(--border-color)',
-                  padding: '10px 14px',
-                  borderRadius: 'var(--radius-md)',
-                  color: 'var(--text-muted)',
-                  fontSize: '0.92rem'
-                }}>
-                  <User size={16} />
-                  <span>{user?.name} ({user?.email})</span>
+                <label className="form-label">Story Tags (comma separated)</label>
+                <div style={{ position: 'relative' }}>
+                  <Tag size={16} style={{ position: 'absolute', left: '14px', top: '14px', color: 'var(--text-dim)' }} />
+                  <input 
+                    id="blog-tags-input"
+                    type="text" 
+                    className="form-input" 
+                    style={{ paddingLeft: '40px' }}
+                    placeholder="e.g. PostgreSQL, Backend, Architecture, React"
+                    value={tagsInput}
+                    onChange={(e) => setTagsInput(e.target.value)}
+                  />
                 </div>
               </div>
 
@@ -214,7 +236,15 @@ export default function CreateBlogModal({ onClose, onBlogCreated }) {
                   disabled={loading}
                 >
                   <Send size={15} />
-                  <span>{loading ? 'Submitting...' : isAdmin ? 'Publish Immediately' : 'Submit for Review'}</span>
+                  <span>
+                    {loading 
+                      ? 'Saving...' 
+                      : isEditing 
+                        ? 'Update Story' 
+                        : isAdmin 
+                          ? 'Publish Immediately' 
+                          : 'Submit for Review'}
+                  </span>
                 </button>
               </div>
             </form>

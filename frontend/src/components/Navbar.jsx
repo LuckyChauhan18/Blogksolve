@@ -1,5 +1,5 @@
 import React from 'react';
-import { PenSquare, BookOpen, LogIn, UserPlus, LogOut, Shield, ShieldAlert } from 'lucide-react';
+import { PenSquare, BookOpen, LogIn, UserPlus, LogOut, ShieldAlert, Database } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export default function Navbar({ onOpenCreate, onOpenAuth, onRequireAuth, onOpenAdminDashboard }) {
@@ -22,8 +22,9 @@ export default function Navbar({ onOpenCreate, onOpenAuth, onRequireAuth, onOpen
           </div>
           <div>
             <span className="brand-title">Blogksolve</span>
-            <span className="badge badge-version" style={{ marginLeft: '10px' }}>
-              v4.0 Admin Approval
+            <span className="badge badge-version" style={{ marginLeft: '10px', background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.3)' }}>
+              <Database size={11} style={{ marginRight: '3px' }} />
+              v5.0 PostgreSQL (Final)
             </span>
           </div>
         </div>
