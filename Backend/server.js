@@ -19,13 +19,14 @@ app.use(express.urlencoded({ extended: true }));
 // Health check endpoint
 app.get('/', (req, res) => {
   res.json({
-    message: 'Welcome to Blogksolve API - Version 1 (Basic Blog Platform)',
+    message: 'Welcome to Blogksolve API - Version 2 (JWT Auth & Role-Based Authorization)',
     status: 'online',
-    version: '1.0.0'
+    version: '2.0.0'
   });
 });
 
 // API Routes
+app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/blogs', require('./routes/blogRoutes'));
 
 // 404 handler

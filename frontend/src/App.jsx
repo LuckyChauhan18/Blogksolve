@@ -1,17 +1,21 @@
 import React, { useState, useEffect } from 'react';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import Navbar from './components/Navbar';
 import BlogCard from './components/BlogCard';
 import BlogModal from './components/BlogModal';
 import CreateBlogModal from './components/CreateBlogModal';
-import { Search, Sparkles, BookOpen, PenTool, RefreshCw } from 'lucide-react';
+import AuthModal from './components/AuthModal';
+import { Search, Sparkles, BookOpen, PenTool, RefreshCw, ShieldCheck } from 'lucide-react';
 
-export default function App() {
+function BlogApp() {
+  const { isAuthenticated, user, isAdmin } = useAuth();
   const [blogs, setBlogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedBlog, setSelectedBlog] = useState(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [authModal, setAuthModal] = useState({ isOpen: false, mode: 'login', notice: '' });
 
   // Fetch blogs from API
   const fetchBlogs = async () => {
@@ -41,6 +45,14 @@ export default function App() {
     setBlogs((prev) => [newBlog, ...prev]);
   };
 
+  const handleOpenAuth = (mode = 'login') => {
+    setAuthModal({ isOpen: true, mode, notice: '' });
+  };
+
+  const handleRequireAuth = (notice) => {
+    setAuthModal({ isOpen: true, mode: 'login', notice });
+  };
+
   // Filter blogs by search term
   const filteredBlogs = blogs.filter((blog) => {
     const q = searchQuery.toLowerCase();
@@ -55,24 +67,25 @@ export default function App() {
     <>
       <Navbar 
         onOpenCreate={() => setIsCreateOpen(true)} 
-        blogCount={blogs.length}
+        onOpenAuth={handleOpenAuth}
+        onRequireAuth={handleRequireAuth}
       />
 
       <main className="container" style={{ flex: 1 }}>
         {/* Hero Header */}
         <section className="hero">
           <div className="hero-tag">
-            <Sparkles size={14} />
-            <span>Version 1.0 Milestone: Core Blog Engine</span>
+            <ShieldCheck size={14} />
+            <span>Version 2.0 Milestone: JWT Authentication & Role Authorization</span>
           </div>
           <h1 className="hero-title">
             Words that Inspire, Code that Ships.
           </h1>
           <p className="hero-desc">
-            A minimalist, high-performance publishing space powered by Express.js and MongoDB. Read stories, write drafts, and explore ideas freely.
+            Explore freely as a guest reader, or sign in as a <strong>Member</strong> or <strong>Admin</strong> to author posts with protected JWT authorization.
           </p>
 
-          {/* Search bar & Quick Stats */}
+          {/* Search bar */}
           <div style={{
             maxWidth: '560px',
             margin: '0 auto',
@@ -198,7 +211,13 @@ export default function App() {
               <button 
                 id="empty-state-write-btn"
                 className="btn btn-primary"
-                onClick={() => setIsCreateOpen(true)}
+                onClick={() => {
+                  if (isAuthenticated) {
+                    setIsCreateOpen(true);
+                  } else {
+                    handleRequireAuth('You must sign in or register before you can write a story.');
+                  }
+                }}
               >
                 <Sparkles size={16} />
                 <span>Write the First Story</span>
@@ -221,7 +240,7 @@ export default function App() {
       {/* Footer */}
       <footer className="footer">
         <div className="container">
-          <p>© 2026 Blogksolve. Version 1.0 (MongoDB + Express + React).</p>
+          <p>© 2026 Blogksolve. Version 2.0 (JWT Auth & Role Authorization).</p>
         </div>
       </footer>
 
@@ -239,6 +258,21 @@ export default function App() {
           onBlogCreated={handleBlogCreated}
         />
       )}
+
+      <AuthModal
+        isOpen={authModal.isOpen}
+        initialMode={authModal.mode}
+        customNotice={authModal.notice}
+        onClose={() => setAuthModal({ isOpen: false, mode: 'login', notice: '' })}
+      />
     </>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <BlogApp />
+    </AuthProvider>
   );
 }

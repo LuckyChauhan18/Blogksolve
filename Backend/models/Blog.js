@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-// Clean, simple and understandable Schema for Blog posts
+// Clean, simple and understandable Schema for Blog posts (Version 2 with User association)
 const blogSchema = new mongoose.Schema(
   {
     title: {
@@ -18,13 +18,17 @@ const blogSchema = new mongoose.Schema(
       default: 'Anonymous Writer',
       trim: true
     },
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
     summary: {
       type: String,
       trim: true
     }
   },
   {
-    timestamps: true // Automatically creates createdAt and updatedAt
+    timestamps: true
   }
 );
 

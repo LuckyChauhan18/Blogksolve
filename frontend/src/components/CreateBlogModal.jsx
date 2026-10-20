@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { X, Send, Sparkles, AlertCircle } from 'lucide-react';
+import { X, Send, Sparkles, AlertCircle, User } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 export default function CreateBlogModal({ onClose, onBlogCreated }) {
+  const { user, token } = useAuth();
   const [title, setTitle] = useState('');
-  const [author, setAuthor] = useState('');
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -21,11 +22,14 @@ export default function CreateBlogModal({ onClose, onBlogCreated }) {
 
       const response = await fetch('http://localhost:5000/api/blogs', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({
           title: title.trim(),
           content: content.trim(),
-          author: author.trim() || 'Anonymous Writer'
+          author: user?.name || 'Anonymous'
         })
       });
 
@@ -64,7 +68,7 @@ export default function CreateBlogModal({ onClose, onBlogCreated }) {
             <div>
               <h3 style={{ fontSize: '1.25rem' }}>Write New Story</h3>
               <p style={{ fontSize: '0.82rem', color: 'var(--text-dim)' }}>
-                Share your ideas with the world (Version 1: Public Write)
+                Publishing as <strong style={{ color: 'var(--text-main)' }}>{user?.name || 'User'}</strong> ({user?.role?.toUpperCase() || 'MEMBER'})
               </p>
             </div>
           </div>
@@ -99,7 +103,7 @@ export default function CreateBlogModal({ onClose, onBlogCreated }) {
               id="blog-title-input"
               type="text" 
               className="form-input" 
-              placeholder="e.g. Building Scalable Web Apps with Modern Stacks"
+              placeholder="e.g. Scaling Authentication Systems with JWT & Express"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               required
@@ -107,15 +111,21 @@ export default function CreateBlogModal({ onClose, onBlogCreated }) {
           </div>
 
           <div className="form-group">
-            <label className="form-label">Author Name (Optional)</label>
-            <input 
-              id="blog-author-input"
-              type="text" 
-              className="form-input" 
-              placeholder="e.g. Lucky Chauhan (defaults to Anonymous)"
-              value={author}
-              onChange={(e) => setAuthor(e.target.value)}
-            />
+            <label className="form-label">Author</label>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              background: 'rgba(15, 23, 42, 0.5)',
+              border: '1px solid var(--border-color)',
+              padding: '10px 14px',
+              borderRadius: 'var(--radius-md)',
+              color: 'var(--text-muted)',
+              fontSize: '0.92rem'
+            }}>
+              <User size={16} />
+              <span>{user?.name} ({user?.email})</span>
+            </div>
           </div>
 
           <div className="form-group">

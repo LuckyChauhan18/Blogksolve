@@ -49,10 +49,10 @@ const getBlogById = async (req, res) => {
 
 // @desc    Create a new blog
 // @route   POST /api/blogs
-// @access  Public (in Version 1)
+// @access  Private (Requires login in Version 2)
 const createBlog = async (req, res) => {
   try {
-    const { title, content, author, summary } = req.body;
+    const { title, content, summary } = req.body;
 
     if (!title || !content) {
       return res.status(400).json({
@@ -64,7 +64,8 @@ const createBlog = async (req, res) => {
     const newBlog = await Blog.create({
       title,
       content,
-      author: author && author.trim() ? author.trim() : 'Anonymous Writer',
+      author: req.user ? req.user.name : (req.body.author || 'Anonymous Writer'),
+      user: req.user ? req.user._id : null,
       summary
     });
 
@@ -84,10 +85,10 @@ const createBlog = async (req, res) => {
 
 // @desc    Delete a blog
 // @route   DELETE /api/blogs/:id
-// @access  Public (in Version 1)
+// @access  Private (Author or Admin)
 const deleteBlog = async (req, res) => {
   try {
-    const blog = await Blog.findByIdAndDelete(req.params.id);
+    const blog = await Blog.findById(req.params.id);
 
     if (!blog) {
       return res.status(404).json({
@@ -95,6 +96,16 @@ const deleteBlog = async (req, res) => {
         message: 'Blog not found'
       });
     }
+
+    // Authorization: User must be author or an admin
+    if (req.user && blog.user && blog.user.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to delete this blog post'
+      });
+    }
+
+    await Blog.findByIdAndDelete(req.params.id);
 
     res.status(200).json({
       success: true,

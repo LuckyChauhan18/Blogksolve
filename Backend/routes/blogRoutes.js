@@ -6,14 +6,15 @@ const {
   createBlog,
   deleteBlog
 } = require('../controller/blogController');
+const { protect } = require('../middleware/authMiddleware');
 
-// Routes for /api/blogs
+// Public can read blogs, but writing requires authentication
 router.route('/')
   .get(getAllBlogs)
-  .post(createBlog);
+  .post(protect, createBlog);
 
 router.route('/:id')
   .get(getBlogById)
-  .delete(deleteBlog);
+  .delete(protect, deleteBlog);
 
 module.exports = router;
