@@ -1,0 +1,86 @@
+import React from 'react';
+import { X, Calendar, User, Clock, Share2 } from 'lucide-react';
+
+export default function BlogModal({ blog, onClose }) {
+  if (!blog) return null;
+
+  const wordCount = blog.content ? blog.content.trim().split(/\s+/).length : 0;
+  const readTime = Math.max(1, Math.ceil(wordCount / 180));
+  const formattedDate = new Date(blog.createdAt || Date.now()).toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric'
+  });
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div 
+        className="modal-content" 
+        onClick={(e) => e.stopPropagation()} 
+        style={{ maxWidth: '780px', padding: '36px' }}
+      >
+        <div className="modal-header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{
+              width: '42px',
+              height: '42px',
+              borderRadius: '50%',
+              background: 'var(--primary-gradient)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'white',
+              fontWeight: 700
+            }}>
+              {(blog.author || 'A')[0].toUpperCase()}
+            </div>
+            <div>
+              <h4 style={{ fontSize: '1rem', color: 'var(--text-main)', marginBottom: '2px' }}>
+                {blog.author || 'Anonymous'}
+              </h4>
+              <div style={{ display: 'flex', gap: '12px', fontSize: '0.8rem', color: 'var(--text-dim)' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Calendar size={12} /> {formattedDate}
+                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Clock size={12} /> {readTime} min read
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <button className="modal-close" onClick={onClose}>
+            <X size={20} />
+          </button>
+        </div>
+
+        <h1 style={{ fontSize: '2.2rem', marginBottom: '20px', lineHeight: '1.25' }}>
+          {blog.title}
+        </h1>
+
+        <div style={{
+          borderTop: '1px solid var(--border-color)',
+          paddingTop: '24px',
+          color: '#cbd5e1',
+          fontSize: '1.05rem',
+          lineHeight: '1.8',
+          whiteSpace: 'pre-wrap',
+          marginBottom: '30px'
+        }}>
+          {blog.content}
+        </div>
+
+        <div style={{
+          display: 'flex',
+          justifyContent: 'flex-end',
+          borderTop: '1px solid var(--border-color)',
+          paddingTop: '16px'
+        }}>
+          <button className="btn btn-secondary" onClick={onClose}>
+            Close Article
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
