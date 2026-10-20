@@ -1,7 +1,8 @@
 import React from 'react';
-import { X, Calendar, User, Clock, Share2 } from 'lucide-react';
+import { X, Calendar, Clock } from 'lucide-react';
+import CommentsSection from './CommentsSection';
 
-export default function BlogModal({ blog, onClose }) {
+export default function BlogModal({ blog, onClose, onRequireAuth }) {
   if (!blog) return null;
 
   const wordCount = blog.content ? blog.content.trim().split(/\s+/).length : 0;
@@ -17,7 +18,7 @@ export default function BlogModal({ blog, onClose }) {
       <div 
         className="modal-content" 
         onClick={(e) => e.stopPropagation()} 
-        style={{ maxWidth: '780px', padding: '36px' }}
+        style={{ maxWidth: '820px', padding: '36px', maxHeight: '92vh' }}
       >
         <div className="modal-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -65,16 +66,20 @@ export default function BlogModal({ blog, onClose }) {
           fontSize: '1.05rem',
           lineHeight: '1.8',
           whiteSpace: 'pre-wrap',
-          marginBottom: '30px'
+          marginBottom: '20px'
         }}>
           {blog.content}
         </div>
+
+        {/* Embedded Comments Section */}
+        <CommentsSection blogId={blog._id} onRequireAuth={onRequireAuth} />
 
         <div style={{
           display: 'flex',
           justifyContent: 'flex-end',
           borderTop: '1px solid var(--border-color)',
-          paddingTop: '16px'
+          paddingTop: '20px',
+          marginTop: '28px'
         }}>
           <button className="btn btn-secondary" onClick={onClose}>
             Close Article

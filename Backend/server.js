@@ -19,15 +19,16 @@ app.use(express.urlencoded({ extended: true }));
 // Health check endpoint
 app.get('/', (req, res) => {
   res.json({
-    message: 'Welcome to Blogksolve API - Version 2 (JWT Auth & Role-Based Authorization)',
+    message: 'Welcome to Blogksolve API - Version 3 (Member Commenting System)',
     status: 'online',
-    version: '2.0.0'
+    version: '3.0.0'
   });
 });
 
 // API Routes
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/blogs', require('./routes/blogRoutes'));
+app.use('/api/comments', require('./routes/commentRoutes'));
 
 // 404 handler
 app.use((req, res) => {

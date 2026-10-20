@@ -8,6 +8,9 @@ const {
 } = require('../controller/blogController');
 const { protect } = require('../middleware/authMiddleware');
 
+// Mount comment router for /api/blogs/:blogId/comments
+router.use('/:blogId/comments', require('./commentRoutes'));
+
 // Public can read blogs, but writing requires authentication
 router.route('/')
   .get(getAllBlogs)

@@ -76,7 +76,7 @@ function BlogApp() {
         <section className="hero">
           <div className="hero-tag">
             <ShieldCheck size={14} />
-            <span>Version 2.0 Milestone: JWT Authentication & Role Authorization</span>
+            <span>Version 3.0 Milestone: Member Commenting System</span>
           </div>
           <h1 className="hero-title">
             Words that Inspire, Code that Ships.
@@ -249,6 +249,7 @@ function BlogApp() {
         <BlogModal 
           blog={selectedBlog} 
           onClose={() => setSelectedBlog(null)} 
+          onRequireAuth={handleRequireAuth}
         />
       )}
 

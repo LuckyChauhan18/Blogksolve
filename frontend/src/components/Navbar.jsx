@@ -23,7 +23,7 @@ export default function Navbar({ onOpenCreate, onOpenAuth, onRequireAuth }) {
           <div>
             <span className="brand-title">Blogksolve</span>
             <span className="badge badge-version" style={{ marginLeft: '10px' }}>
-              v2.0 Auth & Roles
+              v3.0 Comments
             </span>
           </div>
         </div>
