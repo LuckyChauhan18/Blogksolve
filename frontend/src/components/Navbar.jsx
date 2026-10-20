@@ -1,8 +1,8 @@
 import React from 'react';
-import { PenSquare, BookOpen, LogIn, UserPlus, LogOut, Shield, User } from 'lucide-react';
+import { PenSquare, BookOpen, LogIn, UserPlus, LogOut, Shield, ShieldAlert } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-export default function Navbar({ onOpenCreate, onOpenAuth, onRequireAuth }) {
+export default function Navbar({ onOpenCreate, onOpenAuth, onRequireAuth, onOpenAdminDashboard }) {
   const { user, isAuthenticated, isAdmin, logout } = useAuth();
 
   const handleWriteClick = () => {
@@ -23,12 +23,29 @@ export default function Navbar({ onOpenCreate, onOpenAuth, onRequireAuth }) {
           <div>
             <span className="brand-title">Blogksolve</span>
             <span className="badge badge-version" style={{ marginLeft: '10px' }}>
-              v3.0 Comments
+              v4.0 Admin Approval
             </span>
           </div>
         </div>
 
         <div className="nav-actions">
+          {/* Admin Dashboard trigger for admin users */}
+          {isAuthenticated && isAdmin && (
+            <button
+              id="admin-dashboard-btn"
+              className="btn btn-secondary"
+              onClick={onOpenAdminDashboard}
+              style={{
+                borderColor: 'rgba(236, 72, 153, 0.5)',
+                background: 'rgba(236, 72, 153, 0.1)',
+                color: '#f472b6'
+              }}
+            >
+              <ShieldAlert size={16} />
+              <span>Admin Dashboard</span>
+            </button>
+          )}
+
           <button 
             id="nav-write-btn"
             className="btn btn-primary"

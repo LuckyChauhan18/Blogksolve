@@ -5,6 +5,7 @@ import BlogCard from './components/BlogCard';
 import BlogModal from './components/BlogModal';
 import CreateBlogModal from './components/CreateBlogModal';
 import AuthModal from './components/AuthModal';
+import AdminDashboardModal from './components/AdminDashboardModal';
 import { Search, Sparkles, BookOpen, PenTool, RefreshCw, ShieldCheck } from 'lucide-react';
 
 function BlogApp() {
@@ -15,9 +16,10 @@ function BlogApp() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedBlog, setSelectedBlog] = useState(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
   const [authModal, setAuthModal] = useState({ isOpen: false, mode: 'login', notice: '' });
 
-  // Fetch blogs from API
+  // Fetch approved blogs from API
   const fetchBlogs = async () => {
     try {
       setLoading(true);
@@ -42,7 +44,9 @@ function BlogApp() {
   }, []);
 
   const handleBlogCreated = (newBlog) => {
-    setBlogs((prev) => [newBlog, ...prev]);
+    if (newBlog && newBlog.status === 'approved') {
+      setBlogs((prev) => [newBlog, ...prev]);
+    }
   };
 
   const handleOpenAuth = (mode = 'login') => {
@@ -69,6 +73,7 @@ function BlogApp() {
         onOpenCreate={() => setIsCreateOpen(true)} 
         onOpenAuth={handleOpenAuth}
         onRequireAuth={handleRequireAuth}
+        onOpenAdminDashboard={() => setIsAdminDashboardOpen(true)}
       />
 
       <main className="container" style={{ flex: 1 }}>
@@ -76,13 +81,13 @@ function BlogApp() {
         <section className="hero">
           <div className="hero-tag">
             <ShieldCheck size={14} />
-            <span>Version 3.0 Milestone: Member Commenting System</span>
+            <span>Version 4.0 Milestone: Admin Approval Workflow & Dashboard</span>
           </div>
           <h1 className="hero-title">
             Words that Inspire, Code that Ships.
           </h1>
           <p className="hero-desc">
-            Explore freely as a guest reader, or sign in as a <strong>Member</strong> or <strong>Admin</strong> to author posts with protected JWT authorization.
+            Community-driven publishing with strict editorial oversight. User stories are submitted for <strong>Admin Review</strong> and published only once approved.
           </p>
 
           {/* Search bar */}
@@ -106,7 +111,7 @@ function BlogApp() {
               id="search-blogs-input"
               type="text" 
               className="form-input" 
-              placeholder="Search stories by title, content or author..."
+              placeholder="Search approved stories by title, content or author..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               style={{
@@ -146,9 +151,9 @@ function BlogApp() {
           borderBottom: '1px solid var(--border-color)'
         }}>
           <div>
-            <h2 style={{ fontSize: '1.4rem' }}>Latest Published Stories</h2>
+            <h2 style={{ fontSize: '1.4rem' }}>Approved Public Stories</h2>
             <p style={{ fontSize: '0.86rem', color: 'var(--text-dim)' }}>
-              Showing {filteredBlogs.length} {filteredBlogs.length === 1 ? 'story' : 'stories'}
+              Showing {filteredBlogs.length} approved {filteredBlogs.length === 1 ? 'story' : 'stories'}
             </p>
           </div>
 
@@ -174,7 +179,7 @@ function BlogApp() {
               margin: '0 auto 16px',
               animation: 'spin 0.8s linear infinite'
             }} />
-            <p>Fetching stories from MongoDB...</p>
+            <p>Fetching approved stories...</p>
           </div>
         ) : error ? (
           <div className="card" style={{ textAlign: 'center', margin: '40px auto', maxWidth: '500px', borderColor: 'rgba(244, 63, 94, 0.3)' }}>
@@ -200,12 +205,12 @@ function BlogApp() {
               <PenTool size={26} />
             </div>
             <h3 style={{ fontSize: '1.25rem', marginBottom: '8px' }}>
-              {searchQuery ? 'No stories match your query' : 'No blogs published yet'}
+              {searchQuery ? 'No stories match your query' : 'No approved blogs yet'}
             </h3>
             <p style={{ color: 'var(--text-muted)', maxWidth: '450px', margin: '0 auto 24px', fontSize: '0.92rem' }}>
               {searchQuery
                 ? `Try adjusting your search for "${searchQuery}" or clear the search input.`
-                : 'Be the first writer to publish an insightful story on the platform!'}
+                : 'Write a story and submit it for review to get published on the homepage!'}
             </p>
             {!searchQuery && (
               <button 
@@ -220,7 +225,7 @@ function BlogApp() {
                 }}
               >
                 <Sparkles size={16} />
-                <span>Write the First Story</span>
+                <span>Write a Story</span>
               </button>
             )}
           </div>
@@ -240,7 +245,7 @@ function BlogApp() {
       {/* Footer */}
       <footer className="footer">
         <div className="container">
-          <p>© 2026 Blogksolve. Version 2.0 (JWT Auth & Role Authorization).</p>
+          <p>© 2026 Blogksolve. Version 4.0 (Admin Approval & User Directory Dashboard).</p>
         </div>
       </footer>
 
@@ -257,6 +262,14 @@ function BlogApp() {
         <CreateBlogModal 
           onClose={() => setIsCreateOpen(false)} 
           onBlogCreated={handleBlogCreated}
+        />
+      )}
+
+      {isAdminDashboardOpen && (
+        <AdminDashboardModal
+          isOpen={isAdminDashboardOpen}
+          onClose={() => setIsAdminDashboardOpen(false)}
+          onBlogApproved={fetchBlogs}
         />
       )}
 

@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-// Clean, simple and understandable Schema for Blog posts (Version 2 with User association)
+// Clean, simple and understandable Schema for Blog posts (Version 4 with Approval Status)
 const blogSchema = new mongoose.Schema(
   {
     title: {
@@ -25,6 +25,19 @@ const blogSchema = new mongoose.Schema(
     summary: {
       type: String,
       trim: true
+    },
+    // Version 4 Approval Workflow
+    status: {
+      type: String,
+      enum: ['pending', 'approved', 'declined'],
+      default: 'pending'
+    },
+    reviewedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    reviewedAt: {
+      type: Date
     }
   },
   {

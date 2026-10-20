@@ -1,11 +1,14 @@
 const Blog = require('../models/Blog');
 
-// @desc    Get all blogs
+// @desc    Get all approved blogs for public feed
 // @route   GET /api/blogs
 // @access  Public
 const getAllBlogs = async (req, res) => {
   try {
-    const blogs = await Blog.find().sort({ createdAt: -1 });
+    // Only approved blogs are shown publicly in Version 4
+    const filter = { status: 'approved' };
+
+    const blogs = await Blog.find(filter).sort({ createdAt: -1 });
     res.status(200).json({
       success: true,
       count: blogs.length,
@@ -47,9 +50,9 @@ const getBlogById = async (req, res) => {
   }
 };
 
-// @desc    Create a new blog
+// @desc    Create a new blog (Enters 'pending' status for normal users)
 // @route   POST /api/blogs
-// @access  Private (Requires login in Version 2)
+// @access  Private
 const createBlog = async (req, res) => {
   try {
     const { title, content, summary } = req.body;
@@ -61,17 +64,24 @@ const createBlog = async (req, res) => {
       });
     }
 
+    // Admins can publish directly; normal users require Admin review
+    const initialStatus = req.user && req.user.role === 'admin' ? 'approved' : 'pending';
+
     const newBlog = await Blog.create({
       title,
       content,
       author: req.user ? req.user.name : (req.body.author || 'Anonymous Writer'),
       user: req.user ? req.user._id : null,
-      summary
+      summary,
+      status: initialStatus
     });
 
     res.status(201).json({
       success: true,
-      message: 'Blog created successfully',
+      message: initialStatus === 'approved' 
+        ? 'Blog published successfully' 
+        : 'Blog submitted for Admin review. It will appear publicly once approved.',
+      status: initialStatus,
       data: newBlog
     });
   } catch (error) {

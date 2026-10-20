@@ -19,9 +19,9 @@ app.use(express.urlencoded({ extended: true }));
 // Health check endpoint
 app.get('/', (req, res) => {
   res.json({
-    message: 'Welcome to Blogksolve API - Version 3 (Member Commenting System)',
+    message: 'Welcome to Blogksolve API - Version 4 (Admin Approval Workflow & Dashboard)',
     status: 'online',
-    version: '3.0.0'
+    version: '4.0.0'
   });
 });
 
@@ -29,6 +29,7 @@ app.get('/', (req, res) => {
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/blogs', require('./routes/blogRoutes'));
 app.use('/api/comments', require('./routes/commentRoutes'));
+app.use('/api/admin', require('./routes/adminRoutes'));
 
 // 404 handler
 app.use((req, res) => {
