@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import API_URL from './config/api';
 import Navbar from './components/Navbar';
 import BlogCard from './components/BlogCard';
 import BlogModal from './components/BlogModal';
@@ -24,7 +25,7 @@ function BlogApp() {
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch('http://localhost:5000/api/blogs');
+      const res = await fetch(`${API_URL}/api/blogs`);
       const data = await res.json();
       if (data.success) {
         setBlogs(data.data);

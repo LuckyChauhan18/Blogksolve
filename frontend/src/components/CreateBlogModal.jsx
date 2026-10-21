@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Send, Sparkles, AlertCircle, User, Clock, CheckCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import API_URL from '../config/api';
 
 export default function CreateBlogModal({ onClose, onBlogCreated }) {
   const { user, token, isAdmin } = useAuth();
@@ -21,7 +22,7 @@ export default function CreateBlogModal({ onClose, onBlogCreated }) {
       setLoading(true);
       setError('');
 
-      const response = await fetch('http://localhost:5000/api/blogs', {
+      const response = await fetch(`${API_URL}/api/blogs`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',

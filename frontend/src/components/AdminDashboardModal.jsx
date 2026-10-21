@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Check, Trash2, Clock, Users, FileText, CheckCircle2, XCircle, AlertTriangle, RefreshCw } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import API_URL from '../config/api';
 
 export default function AdminDashboardModal({ isOpen, onClose, onBlogApproved }) {
   if (!isOpen) return null;
@@ -17,10 +18,10 @@ export default function AdminDashboardModal({ isOpen, onClose, onBlogApproved })
     try {
       setLoading(true);
       const [blogsRes, usersRes] = await Promise.all([
-        fetch('http://localhost:5000/api/admin/blogs', {
+        fetch(`${API_URL}/api/admin/blogs`, {
           headers: { Authorization: `Bearer ${token}` }
         }),
-        fetch('http://localhost:5000/api/admin/users', {
+        fetch(`${API_URL}/api/admin/users`, {
           headers: { Authorization: `Bearer ${token}` }
         })
       ]);
@@ -44,7 +45,7 @@ export default function AdminDashboardModal({ isOpen, onClose, onBlogApproved })
   const handleDecision = async (blogId, status) => {
     try {
       setActionLoadingId(blogId);
-      const res = await fetch(`http://localhost:5000/api/admin/blogs/${blogId}/status`, {
+      const res = await fetch(`${API_URL}/api/admin/blogs/${blogId}/status`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',

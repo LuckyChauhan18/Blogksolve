@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { MessageSquare, Send, Trash2, Lock, AlertCircle, Clock } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import API_URL from '../config/api';
 
 export default function CommentsSection({ blogId, onRequireAuth }) {
   const { user, token, isAuthenticated, isAdmin } = useAuth();
@@ -13,7 +14,7 @@ export default function CommentsSection({ blogId, onRequireAuth }) {
   const fetchComments = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`http://localhost:5000/api/blogs/${blogId}/comments`);
+      const res = await fetch(`${API_URL}/api/blogs/${blogId}/comments`);
       const data = await res.json();
       if (data.success) {
         setComments(data.data);
@@ -44,7 +45,7 @@ export default function CommentsSection({ blogId, onRequireAuth }) {
       setSubmitting(true);
       setError('');
 
-      const res = await fetch(`http://localhost:5000/api/blogs/${blogId}/comments`, {
+      const res = await fetch(`${API_URL}/api/blogs/${blogId}/comments`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -72,7 +73,7 @@ export default function CommentsSection({ blogId, onRequireAuth }) {
     if (!window.confirm('Are you sure you want to delete this comment?')) return;
 
     try {
-      const res = await fetch(`http://localhost:5000/api/comments/${commentId}`, {
+      const res = await fetch(`${API_URL}/api/comments/${commentId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`
