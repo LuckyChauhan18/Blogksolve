@@ -14,6 +14,7 @@ const getAdminBlogs = async (req, res) => {
         b.summary,
         b.author_name as author,
         b.user_id,
+        b.cover_image as "coverImage",
         b.status,
         b.created_at,
         b.created_at as "createdAt",

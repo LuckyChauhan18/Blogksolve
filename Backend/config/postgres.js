@@ -77,12 +77,14 @@ const initSchema = async (db) => {
       summary TEXT,
       author_name VARCHAR(100) NOT NULL,
       user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      cover_image VARCHAR(255),
       status VARCHAR(20) DEFAULT 'pending',
       reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       reviewed_at TIMESTAMP,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );`,
+    `ALTER TABLE blogs ADD COLUMN IF NOT EXISTS cover_image VARCHAR(255);`,
     `CREATE TABLE IF NOT EXISTS tags (
       id SERIAL PRIMARY KEY,
       name VARCHAR(50) UNIQUE NOT NULL,

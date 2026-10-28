@@ -1,6 +1,7 @@
 import React from 'react';
 import { Calendar, User, ArrowRight, Clock, Tag, Edit3, Trash2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import API_URL from '../config/api';
 
 export default function BlogCard({ blog, onReadMore, onSelectTag, onEditBlog, onDeleteBlog }) {
   const { user, isAdmin } = useAuth();
@@ -93,6 +94,31 @@ export default function BlogCard({ blog, onReadMore, onSelectTag, onEditBlog, on
           </div>
         )}
       </div>
+
+      {/* Cover Image — 16:9 standard card banner */}
+      {blog.coverImage && (
+        <div style={{
+          width: '100%',
+          aspectRatio: '16 / 9',
+          maxHeight: '210px',
+          overflow: 'hidden',
+          borderRadius: 'var(--radius-md)',
+          marginBottom: '14px',
+          background: 'rgba(15, 23, 42, 0.7)'
+        }}>
+          <img
+            src={blog.coverImage.startsWith('http') ? blog.coverImage : `${API_URL}${blog.coverImage}`}
+            alt={blog.title}
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              objectPosition: 'center',
+              display: 'block'
+            }}
+          />
+        </div>
+      )}
 
       <h3 style={{ fontSize: '1.35rem', marginBottom: '10px', lineHeight: '1.35' }}>
         {blog.title}

@@ -51,6 +51,7 @@ const getAllBlogs = async (req, res) => {
         b.summary,
         b.author_name as author,
         b.user_id,
+        b.cover_image as "coverImage",
         b.status,
         b.created_at,
         b.created_at as "createdAt",
@@ -113,6 +114,7 @@ const getBlogById = async (req, res) => {
         b.summary,
         b.author_name as author,
         b.user_id,
+        b.cover_image as "coverImage",
         b.status,
         b.created_at,
         b.created_at as "createdAt",
@@ -165,11 +167,12 @@ const createBlog = async (req, res) => {
     const autoSummary = summary || content.substring(0, 160).replace(/<[^>]*>?/gm, '') + '...';
     const authorName = req.user.name;
     const initialStatus = req.user.role === 'admin' ? 'approved' : 'pending';
+    const coverImage = req.file ? `/uploads/${req.file.filename}` : null;
 
     const insertSql = `
-      INSERT INTO blogs (title, content, summary, author_name, user_id, status)
-      VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING id, id as _id, title, content, summary, author_name as author, user_id, status, created_at, created_at as "createdAt"
+      INSERT INTO blogs (title, content, summary, author_name, user_id, cover_image, status)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING id, id as _id, title, content, summary, author_name as author, user_id, cover_image as "coverImage", status, created_at, created_at as "createdAt"
     `;
 
     const result = await query(insertSql, [
@@ -178,6 +181,7 @@ const createBlog = async (req, res) => {
       autoSummary.trim(),
       authorName,
       req.user.id,
+      coverImage,
       initialStatus
     ]);
 
@@ -233,15 +237,16 @@ const updateBlog = async (req, res) => {
     const updatedTitle = title !== undefined ? title.trim() : blog.title;
     const updatedContent = content !== undefined ? content.trim() : blog.content;
     const updatedSummary = summary !== undefined ? summary.trim() : (updatedContent.substring(0, 160) + '...');
+    const updatedCoverImage = req.file ? `/uploads/${req.file.filename}` : blog.cover_image;
 
     const updateSql = `
       UPDATE blogs
-      SET title = $1, content = $2, summary = $3, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $4
-      RETURNING id, id as _id, title, content, summary, author_name as author, user_id, status, created_at, created_at as "createdAt"
+      SET title = $1, content = $2, summary = $3, cover_image = $4, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $5
+      RETURNING id, id as _id, title, content, summary, author_name as author, user_id, cover_image as "coverImage", status, created_at, created_at as "createdAt"
     `;
 
-    const result = await query(updateSql, [updatedTitle, updatedContent, updatedSummary, id]);
+    const result = await query(updateSql, [updatedTitle, updatedContent, updatedSummary, updatedCoverImage, id]);
     const updatedBlog = result.rows[0];
 
     if (tags !== undefined) {

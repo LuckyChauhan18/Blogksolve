@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { X, Send, Sparkles, AlertCircle, User, Clock, Tag } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import API_URL from '../config/api';
 
 export default function CreateBlogModal({ onClose, onBlogCreated, initialBlog = null, onBlogUpdated }) {
   const { user, token, isAdmin } = useAuth();
   const [title, setTitle] = useState(initialBlog?.title || '');
   const [content, setContent] = useState(initialBlog?.content || '');
+  const [coverImage, setCoverImage] = useState(null);
   const [tagsInput, setTagsInput] = useState(
     Array.isArray(initialBlog?.tags) ? initialBlog.tags.join(', ') : ''
   );
@@ -32,23 +34,27 @@ export default function CreateBlogModal({ onClose, onBlogCreated, initialBlog = 
         .filter(Boolean);
 
       const url = isEditing 
-        ? `http://localhost:5000/api/blogs/${initialBlog.id || initialBlog._id}` 
-        : 'http://localhost:5000/api/blogs';
+        ? `${API_URL}/api/blogs/${initialBlog.id || initialBlog._id}` 
+        : `${API_URL}/api/blogs`;
 
       const method = isEditing ? 'PUT' : 'POST';
+
+      // Use FormData for file upload support
+      const formData = new FormData();
+      formData.append('title', title.trim());
+      formData.append('content', content.trim());
+      formData.append('author', user?.name || 'Anonymous');
+      formData.append('tags', cleanTags.join(','));
+      if (coverImage) {
+        formData.append('coverImage', coverImage);
+      }
 
       const response = await fetch(url, {
         method,
         headers: { 
-          'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({
-          title: title.trim(),
-          content: content.trim(),
-          tags: cleanTags,
-          author: user?.name || 'Anonymous'
-        })
+        body: formData
       });
 
       const data = await response.json();
@@ -190,6 +196,70 @@ export default function CreateBlogModal({ onClose, onBlogCreated, initialBlog = 
                   onChange={(e) => setTitle(e.target.value)}
                   required
                 />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Cover Image <span style={{ fontWeight: 400, color: 'var(--text-dim)' }}>(Optional)</span></label>
+                <input
+                  id="blog-cover-image-input"
+                  type="file"
+                  accept="image/*"
+                  className="form-input"
+                  style={{ cursor: 'pointer', paddingTop: '8px' }}
+                  onChange={(e) => setCoverImage(e.target.files[0] || null)}
+                />
+                {coverImage && (
+                  <div style={{ marginTop: '10px' }}>
+                    <div style={{
+                      position: 'relative',
+                      width: '100%',
+                      aspectRatio: '16 / 9',
+                      maxHeight: '180px',
+                      borderRadius: '8px',
+                      overflow: 'hidden',
+                      border: '1px solid var(--border-color)',
+                      marginBottom: '6px',
+                      background: 'rgba(15, 23, 42, 0.7)'
+                    }}>
+                      <img 
+                        src={URL.createObjectURL(coverImage)} 
+                        alt="Preview" 
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                          objectPosition: 'center',
+                          display: 'block'
+                        }} 
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setCoverImage(null)}
+                        style={{
+                          position: 'absolute',
+                          top: '8px',
+                          right: '8px',
+                          background: 'rgba(0, 0, 0, 0.75)',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: '50%',
+                          width: '26px',
+                          height: '26px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer'
+                        }}
+                        title="Remove image"
+                      >
+                        <X size={15} />
+                      </button>
+                    </div>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                      ✅ Selected: <strong>{coverImage.name}</strong> ({(coverImage.size / 1024).toFixed(1)} KB)
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="form-group">

@@ -1,0 +1,1545 @@
+================================================================================
+  MULTER IMAGE UPLOAD - COMPLETE FILES CODE (POSTGRESQL BRANCH)
+  Branch: v5-final-postgres
+================================================================================
+
+TABLE OF CONTENTS:
+------------------
+[BACKEND FILES - POSTGRESQL ARCHITECTURE]
+1. Backend/middleware/upload.js                  - Multer diskStorage, File Filter, Size Limit
+2. Backend/config/postgres.js                    - PostgreSQL initSchema with cover_image column
+3. Backend/controller/postgresBlogController.js  - Handling req.file and saving cover_image in PostgreSQL
+4. Backend/controller/postgresAdminController.js - Admin review query selecting cover_image
+5. Backend/routes/postgresBlogRoutes.js          - upload.single('coverImage') middleware routes
+6. Backend/server.js                             - Express static serving for /uploads folder
+
+[FRONTEND FILES]
+7. frontend/src/config/api.js                    - Central API Base URL config
+8. frontend/src/components/CreateBlogModal.jsx   - File input, FormData, and 16:9 live preview
+9. frontend/src/components/BlogCard.jsx          - Home cards 16:9 banner cover image
+10. frontend/src/components/BlogModal.jsx        - Reader view 16:9 widescreen banner
+
+[CONFIG / GIT]
+11. .gitignore                                   - Excluding Backend/uploads/ folder
+
+
+================================================================================
+FILE 1: Backend/middleware/upload.js
+Path: Backend/middleware/upload.js
+Role: Multer disk storage setup, file filter (images only) and 5MB size limit.
+================================================================================
+const multer = require('multer');
+const path = require('path');
+
+// DISK STORAGE — files Backend/uploads/ folder mein save hongi
+const storage = multer.diskStorage({
+  // Kaunse folder mein save karna hai
+  destination: function (req, file, cb) {
+    cb(null, 'uploads/');
+  },
+
+  // File ka unique naam banao (same naam se overwrite na ho)
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname); // e.g. ".jpg"
+    cb(null, file.fieldname + '-' + uniqueSuffix + ext);
+    // Result: "coverImage-1714000000000-123456789.jpg"
+  }
+});
+
+// FILE FILTER — sirf image files allow karo
+const fileFilter = (req, file, cb) => {
+  const allowedTypes = /jpeg|jpg|png|gif|webp/;
+  const isValid = allowedTypes.test(
+    path.extname(file.originalname).toLowerCase()
+  );
+  if (isValid) {
+    cb(null, true);
+  } else {
+    cb(new Error('Only image files are allowed! (jpg, jpeg, png, gif, webp)'), false);
+  }
+};
+
+// MULTER INSTANCE with storage + filter + size limit
+const upload = multer({
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // Max 5MB per file
+  }
+});
+
+module.exports = upload;
+
+
+================================================================================
+FILE 2: Backend/config/postgres.js
+Path: Backend/config/postgres.js
+Role: PostgreSQL connection pool + initSchema with cover_image column & auto-migration.
+================================================================================
+const path = require('path');
+const fs = require('fs');
+const { Pool } = require('pg');
+const { PGlite } = require('@electric-sql/pglite');
+
+let dbInstance = null;
+let isNativePostgres = false;
+
+/**
+ * Initializes and connects to PostgreSQL.
+ * Uses native pg.Pool if process.env.DATABASE_URL is provided and reachable,
+ * otherwise runs embedded WebAssembly PostgreSQL (PGlite) storing data in Backend/data/pgdata.
+ */
+const initPostgres = async () => {
+  if (dbInstance) return dbInstance;
+
+  const externalUrl = process.env.DATABASE_URL;
+
+  if (externalUrl && !externalUrl.includes('placeholder')) {
+    try {
+      console.log('Connecting to external PostgreSQL server via Pool...');
+      const pool = new Pool({ connectionString: externalUrl });
+      const test = await pool.query('SELECT NOW() as current_time');
+      console.log('Connected to External PostgreSQL:', test.rows[0].current_time);
+      dbInstance = pool;
+      isNativePostgres = true;
+      await initSchema(pool);
+      return pool;
+    } catch (err) {
+      console.warn('Could not connect to external PostgreSQL, falling back to embedded PostgreSQL:', err.message);
+    }
+  }
+
+  // Embedded PostgreSQL engine (PGlite)
+  const dataDir = path.join(__dirname, '..', 'data', 'pgdata');
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+  }
+
+  console.log(`Connecting to Embedded PostgreSQL (PGlite) stored at: ${dataDir}...`);
+  const pgLite = new PGlite(dataDir);
+  dbInstance = pgLite;
+  isNativePostgres = false;
+
+  await initSchema(pgLite);
+  console.log('PostgreSQL schema and tables verified successfully!');
+  return pgLite;
+};
+
+/**
+ * Executes a SQL query with parameters regardless of pool or PGlite driver
+ */
+const query = async (text, params = []) => {
+  if (!dbInstance) {
+    await initPostgres();
+  }
+  return await dbInstance.query(text, params);
+};
+
+/**
+ * Creates tables, foreign keys, and indexes if not already existing
+ */
+const initSchema = async (db) => {
+  const statements = [
+    `CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(100) NOT NULL,
+      email VARCHAR(150) UNIQUE NOT NULL,
+      password_hash VARCHAR(255) NOT NULL,
+      role VARCHAR(20) DEFAULT 'user',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );`,
+    `CREATE TABLE IF NOT EXISTS blogs (
+      id SERIAL PRIMARY KEY,
+      title VARCHAR(255) NOT NULL,
+      content TEXT NOT NULL,
+      summary TEXT,
+      author_name VARCHAR(100) NOT NULL,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      cover_image VARCHAR(255),
+      status VARCHAR(20) DEFAULT 'pending',
+      reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      reviewed_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );`,
+    `ALTER TABLE blogs ADD COLUMN IF NOT EXISTS cover_image VARCHAR(255);`,
+    `CREATE TABLE IF NOT EXISTS tags (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(50) UNIQUE NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );`,
+    `CREATE TABLE IF NOT EXISTS blog_tags (
+      blog_id INTEGER REFERENCES blogs(id) ON DELETE CASCADE,
+      tag_id INTEGER REFERENCES tags(id) ON DELETE CASCADE,
+      PRIMARY KEY (blog_id, tag_id)
+    );`,
+    `CREATE TABLE IF NOT EXISTS comments (
+      id SERIAL PRIMARY KEY,
+      blog_id INTEGER REFERENCES blogs(id) ON DELETE CASCADE NOT NULL,
+      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+      parent_id INTEGER REFERENCES comments(id) ON DELETE CASCADE,
+      content TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );`,
+    `CREATE INDEX IF NOT EXISTS idx_blogs_status ON blogs(status);`,
+    `CREATE INDEX IF NOT EXISTS idx_comments_blog ON comments(blog_id);`,
+    `CREATE INDEX IF NOT EXISTS idx_comments_parent ON comments(parent_id);`,
+    `CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name);`
+  ];
+
+  if (typeof db.exec === 'function') {
+    await db.exec(statements.join('\n'));
+  } else {
+    for (const stmt of statements) {
+      await db.query(stmt);
+    }
+  }
+};
+
+module.exports = {
+  initPostgres,
+  query
+};
+
+
+================================================================================
+FILE 3: Backend/controller/postgresBlogController.js
+Path: Backend/controller/postgresBlogController.js
+Role: PostgreSQL Blog controller handling cover_image in SELECT, INSERT, and UPDATE.
+================================================================================
+const { query } = require('../config/postgres');
+
+// Helper to save and associate tags with a blog
+const syncBlogTags = async (blogId, tagNames = []) => {
+  if (!Array.isArray(tagNames) || tagNames.length === 0) return [];
+
+  // Remove existing associations
+  await query('DELETE FROM blog_tags WHERE blog_id = $1', [blogId]);
+
+  const assignedTags = [];
+  for (let rawName of tagNames) {
+    const cleanName = rawName.trim().replace(/^#/, '');
+    if (!cleanName) continue;
+
+    // Insert tag or get existing
+    let tagResult = await query(
+      `INSERT INTO tags (name)
+       VALUES ($1)
+       ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+       RETURNING id, name`,
+      [cleanName]
+    );
+
+    const tagId = tagResult.rows[0].id;
+    await query(
+      `INSERT INTO blog_tags (blog_id, tag_id)
+       VALUES ($1, $2)
+       ON CONFLICT DO NOTHING`,
+      [blogId, tagId]
+    );
+
+    assignedTags.push(cleanName);
+  }
+
+  return assignedTags;
+};
+
+// @desc    Get all public approved blogs (with optional tag & search filtering)
+// @route   GET /api/blogs
+// @access  Public
+const getAllBlogs = async (req, res) => {
+  try {
+    const { tag, search } = req.query;
+
+    let sql = `
+      SELECT 
+        b.id,
+        b.id as _id,
+        b.title,
+        b.content,
+        b.summary,
+        b.author_name as author,
+        b.user_id,
+        b.cover_image as "coverImage",
+        b.status,
+        b.created_at,
+        b.created_at as "createdAt",
+        COALESCE(
+          json_agg(t.name) FILTER (WHERE t.name IS NOT NULL), '[]'
+        ) as tags
+      FROM blogs b
+      LEFT JOIN blog_tags bt ON b.id = bt.blog_id
+      LEFT JOIN tags t ON bt.tag_id = t.id
+      WHERE b.status = 'approved'
+    `;
+
+    const params = [];
+
+    if (tag && tag.trim()) {
+      params.push(tag.trim().replace(/^#/, ''));
+      sql += ` AND b.id IN (
+        SELECT bt2.blog_id FROM blog_tags bt2 
+        JOIN tags t2 ON bt2.tag_id = t2.id 
+        WHERE LOWER(t2.name) = LOWER($${params.length})
+      )`;
+    }
+
+    if (search && search.trim()) {
+      params.push(`%${search.trim()}%`);
+      sql += ` AND (b.title ILIKE $${params.length} OR b.content ILIKE $${params.length} OR b.author_name ILIKE $${params.length})`;
+    }
+
+    sql += ` GROUP BY b.id ORDER BY b.created_at DESC`;
+
+    const result = await query(sql, params);
+
+    res.status(200).json({
+      success: true,
+      count: result.rows.length,
+      data: result.rows
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve blogs from PostgreSQL',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Get single blog by ID
+// @route   GET /api/blogs/:id
+// @access  Public
+const getBlogById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const sql = `
+      SELECT 
+        b.id,
+        b.id as _id,
+        b.title,
+        b.content,
+        b.summary,
+        b.author_name as author,
+        b.user_id,
+        b.cover_image as "coverImage",
+        b.status,
+        b.created_at,
+        b.created_at as "createdAt",
+        COALESCE(
+          json_agg(t.name) FILTER (WHERE t.name IS NOT NULL), '[]'
+        ) as tags
+      FROM blogs b
+      LEFT JOIN blog_tags bt ON b.id = bt.blog_id
+      LEFT JOIN tags t ON bt.tag_id = t.id
+      WHERE b.id = $1
+      GROUP BY b.id
+    `;
+
+    const result = await query(sql, [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Blog post not found'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: result.rows[0]
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching blog details',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Create a new blog with tags & approval workflow
+// @route   POST /api/blogs
+// @access  Private (Signed-in users)
+const createBlog = async (req, res) => {
+  try {
+    const { title, content, summary, tags = [] } = req.body;
+
+    if (!title || !content) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide both title and content for the story'
+      });
+    }
+
+    const autoSummary = summary || content.substring(0, 160).replace(/<[^>]*>?/gm, '') + '...';
+    const authorName = req.user.name;
+    const initialStatus = req.user.role === 'admin' ? 'approved' : 'pending';
+    const coverImage = req.file ? `/uploads/${req.file.filename}` : null;
+
+    const insertSql = `
+      INSERT INTO blogs (title, content, summary, author_name, user_id, cover_image, status)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING id, id as _id, title, content, summary, author_name as author, user_id, cover_image as "coverImage", status, created_at, created_at as "createdAt"
+    `;
+
+    const result = await query(insertSql, [
+      title.trim(),
+      content.trim(),
+      autoSummary.trim(),
+      authorName,
+      req.user.id,
+      coverImage,
+      initialStatus
+    ]);
+
+    const createdBlog = result.rows[0];
+
+    // Process and attach tags
+    const cleanTags = Array.isArray(tags) ? tags : typeof tags === 'string' ? tags.split(',').map(t => t.trim()) : [];
+    createdBlog.tags = await syncBlogTags(createdBlog.id, cleanTags);
+
+    res.status(201).json({
+      success: true,
+      message: initialStatus === 'approved'
+        ? 'Blog published successfully'
+        : 'Blog submitted for Admin review. It will appear publicly once approved.',
+      status: initialStatus,
+      data: createdBlog
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: 'Failed to create blog',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Update / Edit an existing blog (Author or Admin authorization)
+// @route   PUT /api/blogs/:id
+// @access  Private (Author or Admin)
+const updateBlog = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, content, summary, tags } = req.body;
+
+    const existing = await query('SELECT * FROM blogs WHERE id = $1', [id]);
+    if (existing.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Blog not found'
+      });
+    }
+
+    const blog = existing.rows[0];
+
+    // Resource Authorization Check
+    if (blog.user_id !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to edit this story'
+      });
+    }
+
+    const updatedTitle = title !== undefined ? title.trim() : blog.title;
+    const updatedContent = content !== undefined ? content.trim() : blog.content;
+    const updatedSummary = summary !== undefined ? summary.trim() : (updatedContent.substring(0, 160) + '...');
+    const updatedCoverImage = req.file ? `/uploads/${req.file.filename}` : blog.cover_image;
+
+    const updateSql = `
+      UPDATE blogs
+      SET title = $1, content = $2, summary = $3, cover_image = $4, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $5
+      RETURNING id, id as _id, title, content, summary, author_name as author, user_id, cover_image as "coverImage", status, created_at, created_at as "createdAt"
+    `;
+
+    const result = await query(updateSql, [updatedTitle, updatedContent, updatedSummary, updatedCoverImage, id]);
+    const updatedBlog = result.rows[0];
+
+    if (tags !== undefined) {
+      const cleanTags = Array.isArray(tags) ? tags : typeof tags === 'string' ? tags.split(',').map(t => t.trim()) : [];
+      updatedBlog.tags = await syncBlogTags(id, cleanTags);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Blog updated successfully',
+      data: updatedBlog
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update blog',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Delete a blog
+// @route   DELETE /api/blogs/:id
+// @access  Private (Author or Admin)
+const deleteBlog = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const existing = await query('SELECT * FROM blogs WHERE id = $1', [id]);
+    if (existing.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Blog not found'
+      });
+    }
+
+    const blog = existing.rows[0];
+
+    // Authorization: Author or Admin
+    if (blog.user_id !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to delete this story'
+      });
+    }
+
+    await query('DELETE FROM blogs WHERE id = $1', [id]);
+
+    res.status(200).json({
+      success: true,
+      message: 'Blog deleted successfully'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete blog',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Get all popular tags with blog count
+// @route   GET /api/tags
+// @access  Public
+const getAllTags = async (req, res) => {
+  try {
+    const sql = `
+      SELECT t.id, t.name, COUNT(bt.blog_id)::int as count
+      FROM tags t
+      INNER JOIN blog_tags bt ON t.id = bt.tag_id
+      INNER JOIN blogs b ON bt.blog_id = b.id
+      WHERE b.status = 'approved'
+      GROUP BY t.id, t.name
+      ORDER BY count DESC, t.name ASC
+    `;
+    const result = await query(sql);
+    res.status(200).json({
+      success: true,
+      data: result.rows
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve tags',
+      error: error.message
+    });
+  }
+};
+
+module.exports = {
+  getAllBlogs,
+  getBlogById,
+  createBlog,
+  updateBlog,
+  deleteBlog,
+  getAllTags
+};
+
+
+================================================================================
+FILE 4: Backend/controller/postgresAdminController.js
+Path: Backend/controller/postgresAdminController.js
+Role: PostgreSQL Admin controller selecting cover_image for review dashboard.
+================================================================================
+const { query } = require('../config/postgres');
+
+// @desc    Get all blogs for Admin review (grouped by pending vs fulfilled)
+// @route   GET /api/admin/blogs
+// @access  Private (Admin only)
+const getAdminBlogs = async (req, res) => {
+  try {
+    const sql = `
+      SELECT 
+        b.id,
+        b.id as _id,
+        b.title,
+        b.content,
+        b.summary,
+        b.author_name as author,
+        b.user_id,
+        b.cover_image as "coverImage",
+        b.status,
+        b.created_at,
+        b.created_at as "createdAt",
+        b.reviewed_at,
+        u.email as "authorEmail",
+        u.role as "authorRole",
+        COALESCE(
+          json_agg(t.name) FILTER (WHERE t.name IS NOT NULL), '[]'
+        ) as tags
+      FROM blogs b
+      LEFT JOIN users u ON b.user_id = u.id
+      LEFT JOIN blog_tags bt ON b.id = bt.blog_id
+      LEFT JOIN tags t ON bt.tag_id = t.id
+      GROUP BY b.id, u.email, u.role
+      ORDER BY b.created_at DESC
+    `;
+
+    const result = await query(sql);
+    const allBlogs = result.rows;
+
+    const pendingBlogs = allBlogs.filter(b => b.status === 'pending');
+    const fulfilledBlogs = allBlogs.filter(b => b.status === 'approved' || b.status === 'declined');
+
+    res.status(200).json({
+      success: true,
+      data: {
+        pendingCount: pendingBlogs.length,
+        fulfilledCount: fulfilledBlogs.length,
+        pendingBlogs,
+        fulfilledBlogs
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve admin blogs',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Accept or Decline a blog request in PostgreSQL
+// @route   PATCH /api/admin/blogs/:id/status
+// @access  Private (Admin only)
+const updateBlogStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!['approved', 'declined'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid status. Must be approved or declined.'
+      });
+    }
+
+    const sql = `
+      UPDATE blogs 
+      SET status = $1, reviewed_by = $2, reviewed_at = CURRENT_TIMESTAMP
+      WHERE id = $3
+      RETURNING id, id as _id, title, status, reviewed_at
+    `;
+
+    const result = await query(sql, [status, req.user.id, id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Blog request not found'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Blog submission has been ${status.toUpperCase()}!`,
+      data: result.rows[0]
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error updating blog approval status',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Get user directory with submission counts
+// @route   GET /api/admin/users
+// @access  Private (Admin only)
+const getUserDirectory = async (req, res) => {
+  try {
+    const sql = `
+      SELECT 
+        u.id,
+        u.id as _id,
+        u.name,
+        u.email,
+        u.role,
+        u.created_at,
+        u.created_at as "createdAt",
+        COUNT(b.id)::int as "submissionCount",
+        COUNT(b.id) FILTER (WHERE b.status = 'approved')::int as "approvedCount",
+        COUNT(b.id) FILTER (WHERE b.status = 'pending')::int as "pendingCount"
+      FROM users u
+      LEFT JOIN blogs b ON u.id = b.user_id
+      GROUP BY u.id
+      ORDER BY u.created_at DESC
+    `;
+
+    const result = await query(sql);
+
+    res.status(200).json({
+      success: true,
+      count: result.rows.length,
+      data: result.rows
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve user directory',
+      error: error.message
+    });
+  }
+};
+
+module.exports = {
+  getAdminBlogs,
+  updateBlogStatus,
+  getUserDirectory
+};
+
+
+================================================================================
+FILE 5: Backend/routes/postgresBlogRoutes.js
+Path: Backend/routes/postgresBlogRoutes.js
+Role: Attaching upload.single('coverImage') middleware to POST and PUT routes.
+================================================================================
+const express = require('express');
+const router = express.Router();
+const {
+  getAllBlogs,
+  getBlogById,
+  createBlog,
+  updateBlog,
+  deleteBlog,
+  getAllTags
+} = require('../controller/postgresBlogController');
+const { protect } = require('../middleware/postgresAuthMiddleware');
+const upload = require('../middleware/upload');
+
+// Mount comment routes nested under /api/blogs/:blogId/comments
+router.use('/:blogId/comments', require('./postgresCommentRoutes'));
+
+// Tags route
+router.get('/tags/all', getAllTags);
+
+router.route('/')
+  .get(getAllBlogs)
+  .post(protect, upload.single('coverImage'), createBlog);
+
+router.route('/:id')
+  .get(getBlogById)
+  .put(protect, upload.single('coverImage'), updateBlog)
+  .delete(protect, deleteBlog);
+
+module.exports = router;
+
+
+================================================================================
+FILE 6: Backend/server.js
+Path: Backend/server.js
+Role: Express app serving static uploads from Backend/uploads folder.
+================================================================================
+const express = require('express');
+const cors = require('cors');
+const dotenv = require('dotenv');
+const path = require('path');
+const { initPostgres } = require('./config/postgres');
+
+// Load environment variables
+dotenv.config();
+
+// Connect to PostgreSQL database engine
+initPostgres().catch(err => {
+  console.error('Failed to initialize PostgreSQL:', err);
+});
+
+const app = express();
+
+// Middlewares
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Serve uploaded images as static files
+// Access via: http://localhost:5000/uploads/filename.jpg
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Health check endpoint
+app.get('/', (req, res) => {
+  res.json({
+    message: 'Welcome to Blogksolve API - Version 5 (Complete PostgreSQL Architecture)',
+    database: 'PostgreSQL',
+    features: [
+      'PostgreSQL Relational Schema',
+      'JWT Authentication & Role Authorization',
+      'Admin Review & Story Approval Workflow',
+      'Dynamic Blog Tags System with Filter Queries',
+      'Two-Level Threaded Nested Reply Comments',
+      'Resource Ownership Authorization (Edit/Delete Own Stories)'
+    ],
+    status: 'online',
+    version: '5.0.0'
+  });
+});
+
+// PostgreSQL API Routes
+app.use('/api/auth', require('./routes/postgresAuthRoutes'));
+app.use('/api/blogs', require('./routes/postgresBlogRoutes'));
+app.use('/api/comments', require('./routes/postgresCommentRoutes'));
+app.use('/api/admin', require('./routes/postgresAdminRoutes'));
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ success: false, message: 'API Route Not Found' });
+});
+
+// Global Error Handler
+app.use((err, req, res, next) => {
+  console.error('Server Error:', err.stack);
+  res.status(500).json({
+    success: false,
+    message: 'Internal Server Error',
+    error: err.message
+  });
+});
+
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`🚀 Blogksolve Backend Server running on http://localhost:${PORT} (PostgreSQL Engine Active)`);
+});
+
+
+================================================================================
+FILE 7: frontend/src/config/api.js
+Path: frontend/src/config/api.js
+Role: Central API base URL configuration for local dev and production.
+================================================================================
+// Central API base URL — reads from environment variable
+// Local dev:   uses http://localhost:5000  (from fallback or .env)
+// Production:  uses your deployed URL      (from .env.production / Vercel env settings)
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
+export default API_URL;
+
+
+================================================================================
+FILE 8: frontend/src/components/CreateBlogModal.jsx
+Path: frontend/src/components/CreateBlogModal.jsx
+Role: Blog modal with cover image upload, FormData, and live 16:9 preview.
+================================================================================
+import React, { useState, useEffect } from 'react';
+import { X, Send, Sparkles, AlertCircle, User, Clock, Tag } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import API_URL from '../config/api';
+
+export default function CreateBlogModal({ onClose, onBlogCreated, initialBlog = null, onBlogUpdated }) {
+  const { user, token, isAdmin } = useAuth();
+  const [title, setTitle] = useState(initialBlog?.title || '');
+  const [content, setContent] = useState(initialBlog?.content || '');
+  const [coverImage, setCoverImage] = useState(null);
+  const [tagsInput, setTagsInput] = useState(
+    Array.isArray(initialBlog?.tags) ? initialBlog.tags.join(', ') : ''
+  );
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [submittedNotice, setSubmittedNotice] = useState(null);
+
+  const isEditing = !!initialBlog;
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!title.trim() || !content.trim()) {
+      setError('Please provide both a Title and Content for your story.');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError('');
+
+      const cleanTags = tagsInput
+        .split(',')
+        .map((t) => t.trim().replace(/^#/, ''))
+        .filter(Boolean);
+
+      const url = isEditing 
+        ? `${API_URL}/api/blogs/${initialBlog.id || initialBlog._id}` 
+        : `${API_URL}/api/blogs`;
+
+      const method = isEditing ? 'PUT' : 'POST';
+
+      // Use FormData for file upload support
+      const formData = new FormData();
+      formData.append('title', title.trim());
+      formData.append('content', content.trim());
+      formData.append('author', user?.name || 'Anonymous');
+      formData.append('tags', cleanTags.join(','));
+      if (coverImage) {
+        formData.append('coverImage', coverImage);
+      }
+
+      const response = await fetch(url, {
+        method,
+        headers: { 
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to save blog post');
+      }
+
+      if (isEditing) {
+        if (onBlogUpdated) onBlogUpdated(data.data);
+        onClose();
+      } else {
+        if (data.status === 'pending') {
+          setSubmittedNotice({
+            status: 'pending',
+            message: data.message
+          });
+        } else {
+          onBlogCreated(data.data);
+          onClose();
+        }
+      }
+    } catch (err) {
+      setError(err.message || 'Error saving blog');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: '8px',
+              background: 'var(--primary-gradient)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'white'
+            }}>
+              <Sparkles size={18} />
+            </div>
+            <div>
+              <h3 style={{ fontSize: '1.25rem' }}>
+                {isEditing ? 'Edit Story' : 'Write New Story'}
+              </h3>
+              <p style={{ fontSize: '0.82rem', color: 'var(--text-dim)' }}>
+                {isEditing ? 'Update your published content' : `Publishing as ${user?.name || 'User'} (${user?.role?.toUpperCase() || 'MEMBER'})`}
+              </p>
+            </div>
+          </div>
+
+          <button className="modal-close" onClick={onClose}>
+            <X size={20} />
+          </button>
+        </div>
+
+        {submittedNotice ? (
+          <div style={{ textAlign: 'center', padding: '24px 10px' }}>
+            <div style={{
+              width: '56px',
+              height: '56px',
+              borderRadius: '50%',
+              background: 'rgba(245, 158, 11, 0.15)',
+              color: '#f59e0b',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 16px'
+            }}>
+              <Clock size={28} />
+            </div>
+            <h3 style={{ fontSize: '1.35rem', marginBottom: '8px', color: 'var(--text-main)' }}>
+              Submitted for Admin Approval!
+            </h3>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', maxWidth: '480px', margin: '0 auto 24px', lineHeight: '1.6' }}>
+              Your story has been received into PostgreSQL. Normal member stories are held in review and will appear publicly once an Administrator approves them from the Admin Dashboard.
+            </p>
+            <button 
+              id="close-pending-notice-btn"
+              type="button" 
+              className="btn btn-primary"
+              onClick={onClose}
+            >
+              Got it, thanks!
+            </button>
+          </div>
+        ) : (
+          <>
+            {!isAdmin && !isEditing && (
+              <div style={{
+                background: 'rgba(245, 158, 11, 0.1)',
+                border: '1px solid rgba(245, 158, 11, 0.3)',
+                borderRadius: 'var(--radius-md)',
+                padding: '10px 14px',
+                color: '#fde68a',
+                fontSize: '0.84rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                marginBottom: '16px'
+              }}>
+                <Clock size={15} />
+                <span>Notice: Stories submitted by normal members require Admin approval before public release.</span>
+              </div>
+            )}
+
+            {error && (
+              <div style={{
+                background: 'rgba(244, 63, 94, 0.15)',
+                border: '1px solid rgba(244, 63, 94, 0.3)',
+                borderRadius: 'var(--radius-md)',
+                padding: '12px 16px',
+                color: 'var(--accent-rose)',
+                fontSize: '0.88rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                marginBottom: '20px'
+              }}>
+                <AlertCircle size={16} />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit}>
+              <div className="form-group">
+                <label className="form-label">Story Title *</label>
+                <input 
+                  id="blog-title-input"
+                  type="text" 
+                  className="form-input" 
+                  placeholder="e.g. Relational Data Modeling with PostgreSQL and Express"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Cover Image <span style={{ fontWeight: 400, color: 'var(--text-dim)' }}>(Optional)</span></label>
+                <input
+                  id="blog-cover-image-input"
+                  type="file"
+                  accept="image/*"
+                  className="form-input"
+                  style={{ cursor: 'pointer', paddingTop: '8px' }}
+                  onChange={(e) => setCoverImage(e.target.files[0] || null)}
+                />
+                {coverImage && (
+                  <div style={{ marginTop: '10px' }}>
+                    <div style={{
+                      position: 'relative',
+                      width: '100%',
+                      aspectRatio: '16 / 9',
+                      maxHeight: '180px',
+                      borderRadius: '8px',
+                      overflow: 'hidden',
+                      border: '1px solid var(--border-color)',
+                      marginBottom: '6px',
+                      background: 'rgba(15, 23, 42, 0.7)'
+                    }}>
+                      <img 
+                        src={URL.createObjectURL(coverImage)} 
+                        alt="Preview" 
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                          objectPosition: 'center',
+                          display: 'block'
+                        }} 
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setCoverImage(null)}
+                        style={{
+                          position: 'absolute',
+                          top: '8px',
+                          right: '8px',
+                          background: 'rgba(0, 0, 0, 0.75)',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: '50%',
+                          width: '26px',
+                          height: '26px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer'
+                        }}
+                        title="Remove image"
+                      >
+                        <X size={15} />
+                      </button>
+                    </div>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                      ✅ Selected: <strong>{coverImage.name}</strong> ({(coverImage.size / 1024).toFixed(1)} KB)
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Story Tags (comma separated)</label>
+                <div style={{ position: 'relative' }}>
+                  <Tag size={16} style={{ position: 'absolute', left: '14px', top: '14px', color: 'var(--text-dim)' }} />
+                  <input 
+                    id="blog-tags-input"
+                    type="text" 
+                    className="form-input" 
+                    style={{ paddingLeft: '40px' }}
+                    placeholder="e.g. PostgreSQL, Backend, Architecture, React"
+                    value={tagsInput}
+                    onChange={(e) => setTagsInput(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Story Content *</label>
+                <textarea 
+                  id="blog-content-input"
+                  className="form-textarea" 
+                  placeholder="Write your story or technical article here..."
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '24px' }}>
+                <button 
+                  type="button" 
+                  className="btn btn-secondary" 
+                  onClick={onClose}
+                  disabled={loading}
+                >
+                  Cancel
+                </button>
+                <button 
+                  id="submit-blog-btn"
+                  type="submit" 
+                  className="btn btn-primary"
+                  disabled={loading}
+                >
+                  <Send size={15} />
+                  <span>
+                    {loading 
+                      ? 'Saving...' 
+                      : isEditing 
+                        ? 'Update Story' 
+                        : isAdmin 
+                          ? 'Publish Immediately' 
+                          : 'Submit for Review'}
+                  </span>
+                </button>
+              </div>
+            </form>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+================================================================================
+FILE 9: frontend/src/components/BlogCard.jsx
+Path: frontend/src/components/BlogCard.jsx
+Role: PostgreSQL Blog card with 16:9 banner cover image, tags, edit and delete buttons.
+================================================================================
+import React from 'react';
+import { Calendar, User, ArrowRight, Clock, Tag, Edit3, Trash2 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import API_URL from '../config/api';
+
+export default function BlogCard({ blog, onReadMore, onSelectTag, onEditBlog, onDeleteBlog }) {
+  const { user, isAdmin } = useAuth();
+
+  const wordCount = blog.content ? blog.content.trim().split(/\s+/).length : 0;
+  const readTime = Math.max(1, Math.ceil(wordCount / 180));
+
+  const formattedDate = new Date(blog.createdAt || blog.created_at || Date.now()).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  });
+
+  const isAuthor = user && (user.id === blog.user_id || user._id === blog.user_id);
+  const canModify = isAuthor || isAdmin;
+
+  const tags = Array.isArray(blog.tags) ? blog.tags : [];
+
+  return (
+    <article className="card" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* Top Author Bar with Edit/Delete for authorized users */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{
+            width: '32px',
+            height: '32px',
+            borderRadius: '50%',
+            background: 'rgba(99, 102, 241, 0.2)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#a5b4fc',
+            fontWeight: 700,
+            fontSize: '0.8rem'
+          }}>
+            {(blog.author || 'A')[0].toUpperCase()}
+          </div>
+          <div style={{ fontSize: '0.86rem', color: 'var(--text-muted)' }}>
+            <span style={{ color: 'var(--text-main)', fontWeight: 600 }}>{blog.author || 'Anonymous'}</span>
+          </div>
+        </div>
+
+        {canModify && (
+          <div style={{ display: 'flex', gap: '6px' }}>
+            {onEditBlog && (
+              <button
+                type="button"
+                onClick={() => onEditBlog(blog)}
+                title="Edit Story"
+                style={{
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 'var(--radius-sm)',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  padding: '5px 8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  fontSize: '0.78rem'
+                }}
+              >
+                <Edit3 size={12} />
+                <span>Edit</span>
+              </button>
+            )}
+
+            {onDeleteBlog && (
+              <button
+                type="button"
+                onClick={() => onDeleteBlog(blog.id || blog._id)}
+                title="Delete Story"
+                style={{
+                  background: 'rgba(244, 63, 94, 0.1)',
+                  border: '1px solid rgba(244, 63, 94, 0.25)',
+                  borderRadius: 'var(--radius-sm)',
+                  color: 'var(--accent-rose)',
+                  cursor: 'pointer',
+                  padding: '5px 8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  fontSize: '0.78rem'
+                }}
+              >
+                <Trash2 size={12} />
+                <span>Delete</span>
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Cover Image — 16:9 standard card banner */}
+      {blog.coverImage && (
+        <div style={{
+          width: '100%',
+          aspectRatio: '16 / 9',
+          maxHeight: '210px',
+          overflow: 'hidden',
+          borderRadius: 'var(--radius-md)',
+          marginBottom: '14px',
+          background: 'rgba(15, 23, 42, 0.7)'
+        }}>
+          <img
+            src={blog.coverImage.startsWith('http') ? blog.coverImage : `${API_URL}${blog.coverImage}`}
+            alt={blog.title}
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              objectPosition: 'center',
+              display: 'block'
+            }}
+          />
+        </div>
+      )}
+
+      <h3 style={{ fontSize: '1.35rem', marginBottom: '10px', lineHeight: '1.35' }}>
+        {blog.title}
+      </h3>
+
+      {/* Tags Chips */}
+      {tags.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '14px' }}>
+          {tags.map((t, idx) => (
+            <span
+              key={idx}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onSelectTag) onSelectTag(t);
+              }}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '3px',
+                padding: '3px 8px',
+                background: 'rgba(99, 102, 241, 0.12)',
+                border: '1px solid rgba(99, 102, 241, 0.25)',
+                borderRadius: 'var(--radius-full)',
+                fontSize: '0.74rem',
+                color: '#a5b4fc',
+                cursor: 'pointer',
+                fontWeight: 600,
+                transition: 'var(--transition-fast)'
+              }}
+            >
+              <Tag size={10} />
+              <span>#{t}</span>
+            </span>
+          ))}
+        </div>
+      )}
+
+      <p style={{
+        color: 'var(--text-muted)',
+        fontSize: '0.94rem',
+        marginBottom: '20px',
+        flexGrow: 1,
+        display: '-webkit-box',
+        WebkitLineClamp: 3,
+        WebkitBoxOrient: 'vertical',
+        overflow: 'hidden'
+      }}>
+        {blog.summary || blog.content}
+      </p>
+
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingTop: '16px',
+        borderTop: '1px solid var(--border-color)',
+        fontSize: '0.82rem',
+        color: 'var(--text-dim)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+            <Calendar size={13} />
+            {formattedDate}
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+            <Clock size={13} />
+            {readTime} min read
+          </span>
+        </div>
+
+        <button 
+          className="btn btn-secondary btn-sm"
+          onClick={() => onReadMore(blog)}
+          style={{ gap: '4px' }}
+        >
+          <span>Read</span>
+          <ArrowRight size={13} />
+        </button>
+      </div>
+    </article>
+  );
+}
+
+
+================================================================================
+FILE 10: frontend/src/components/BlogModal.jsx
+Path: frontend/src/components/BlogModal.jsx
+Role: Full-screen reader view modal displaying 16:9 banner cover image.
+================================================================================
+import React from 'react';
+import { X, Calendar, Clock } from 'lucide-react';
+import CommentsSection from './CommentsSection';
+import API_URL from '../config/api';
+
+export default function BlogModal({ blog, onClose, onRequireAuth }) {
+  if (!blog) return null;
+
+  const wordCount = blog.content ? blog.content.trim().split(/\s+/).length : 0;
+  const readTime = Math.max(1, Math.ceil(wordCount / 180));
+  const formattedDate = new Date(blog.createdAt || Date.now()).toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric'
+  });
+
+  const imageUrl = blog.coverImage 
+    ? (blog.coverImage.startsWith('http') ? blog.coverImage : `${API_URL}${blog.coverImage}`)
+    : null;
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div 
+        className="modal-content" 
+        onClick={(e) => e.stopPropagation()} 
+        style={{ maxWidth: '820px', padding: '36px', maxHeight: '92vh', overflowY: 'auto' }}
+      >
+        <div className="modal-header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{
+              width: '42px',
+              height: '42px',
+              borderRadius: '50%',
+              background: 'var(--primary-gradient)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'white',
+              fontWeight: 700
+            }}>
+              {(blog.author || 'A')[0].toUpperCase()}
+            </div>
+            <div>
+              <h4 style={{ fontSize: '1rem', color: 'var(--text-main)', marginBottom: '2px' }}>
+                {blog.author || 'Anonymous'}
+              </h4>
+              <div style={{ display: 'flex', gap: '12px', fontSize: '0.8rem', color: 'var(--text-dim)' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Calendar size={12} /> {formattedDate}
+                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Clock size={12} /> {readTime} min read
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <button className="modal-close" onClick={onClose}>
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Cover Image — 16:9 widescreen banner, perfectly balanced with content */}
+        {imageUrl && (
+          <div style={{
+            width: '100%',
+            aspectRatio: '16 / 9',
+            maxHeight: '300px',
+            borderRadius: '14px',
+            overflow: 'hidden',
+            margin: '18px 0 24px 0',
+            boxShadow: '0 10px 28px rgba(0, 0, 0, 0.35)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            background: 'rgba(15, 23, 42, 0.7)'
+          }}>
+            <img
+              src={imageUrl}
+              alt={blog.title}
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                objectPosition: 'center',
+                display: 'block'
+              }}
+            />
+          </div>
+        )}
+
+        <h1 style={{ fontSize: '2.2rem', marginBottom: '20px', lineHeight: '1.25' }}>
+          {blog.title}
+        </h1>
+
+        <div style={{
+          borderTop: '1px solid var(--border-color)',
+          paddingTop: '24px',
+          color: '#cbd5e1',
+          fontSize: '1.05rem',
+          lineHeight: '1.8',
+          whiteSpace: 'pre-wrap',
+          marginBottom: '20px'
+        }}>
+          {blog.content}
+        </div>
+
+        {/* Embedded Comments Section */}
+        <CommentsSection blogId={blog.id || blog._id} onRequireAuth={onRequireAuth} />
+
+        <div style={{
+          display: 'flex',
+          justifyContent: 'flex-end',
+          borderTop: '1px solid var(--border-color)',
+          paddingTop: '20px',
+          marginTop: '28px'
+        }}>
+          <button className="btn btn-secondary" onClick={onClose}>
+            Close Article
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+================================================================================
+FILE 11: .gitignore
+Path: .gitignore
+Role: Excludes Backend/uploads/ directory from being committed to Git repository.
+================================================================================
+# Dependencies
+node_modules/
+package-lock.json
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Database data directories
+Backend/data/
+*.db
+*.sqlite
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# IDE and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Multer uploaded images (local disk storage)
+Backend/uploads/

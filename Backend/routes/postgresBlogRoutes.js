@@ -9,6 +9,7 @@ const {
   getAllTags
 } = require('../controller/postgresBlogController');
 const { protect } = require('../middleware/postgresAuthMiddleware');
+const upload = require('../middleware/upload');
 
 // Mount comment routes nested under /api/blogs/:blogId/comments
 router.use('/:blogId/comments', require('./postgresCommentRoutes'));
@@ -18,11 +19,11 @@ router.get('/tags/all', getAllTags);
 
 router.route('/')
   .get(getAllBlogs)
-  .post(protect, createBlog);
+  .post(protect, upload.single('coverImage'), createBlog);
 
 router.route('/:id')
   .get(getBlogById)
-  .put(protect, updateBlog)
+  .put(protect, upload.single('coverImage'), updateBlog)
   .delete(protect, deleteBlog);
 
 module.exports = router;
